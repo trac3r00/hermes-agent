@@ -6415,8 +6415,21 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         scheduled = 0
         for entry in candidates:
             marker = entry.last_resume_marked_at or entry.updated_at
-            if marker is not None and (now - marker).total_seconds() > window:
-                continue
+            if marker is not None:
+                # ``now`` is naive local time and session.py normalizes its
+                # datetimes to naive on the way in — but a marker persisted by
+                # an older/foreign code path can still arrive tz-aware. Mixing
+                # the two raises "can't subtract offset-naive and offset-aware
+                # datetimes", which propagates out of start() and aborts
+                # auto-resume for EVERY pending session (users see their
+                # conversation reset to the first turn after a restart).
+                # Coerce an aware marker to naive local time (matching
+                # session._parse_session_datetime) so the freshness check is
+                # robust to either representation.
+                if marker.tzinfo is not None:
+                    marker = marker.astimezone().replace(tzinfo=None)
+                if (now - marker).total_seconds() > window:
+                    continue
 
             # Already being resumed (e.g. scheduled at startup and still
             # in-flight) — don't synthesize a second continuation turn.
