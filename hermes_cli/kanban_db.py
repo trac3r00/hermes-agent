@@ -6409,17 +6409,22 @@ def detect_crashed_workers(conn: sqlite3.Connection) -> list[str]:
                 # Worker subprocess returned 0 but its task is still
                 # ``running`` in the DB — it exited without calling
                 # ``kanban_complete`` / ``kanban_block``. Retrying won't
-                # help.
+                # help (same conversational exit). Bob forensics 2026-07:
+                # surface as an actionable review-required block rather
+                # than a bare "protocol violation" thrash signal.
                 protocol_violation = True
                 error_text = (
                     "worker exited cleanly (rc=0) without calling "
-                    "kanban_complete or kanban_block — protocol violation"
+                    "kanban_complete or kanban_block — protocol violation; "
+                    "review-required: finalize with kanban_complete "
+                    "(evidence) or kanban_block (concrete blocker)"
                 )
                 event_kind = "protocol_violation"
                 event_payload = {
                     "pid": pid,
                     "claimer": row["claim_lock"],
                     "exit_code": code,
+                    "operator_action": "review_required_closeout",
                 }
             elif kind == "rate_limited":
                 # Worker bailed because the provider rate-limited / exhausted
