@@ -222,6 +222,15 @@ def test_create_task_no_parents_is_ready(kanban_home):
     assert t.workspace_kind == "scratch"
 
 
+def test_create_task_persists_model_override(kanban_home):
+    with kb.connect() as conn:
+        tid = kb.create_task(conn, title="route task", model_override="route-a")
+        task = kb.get_task(conn, tid)
+
+    assert task is not None
+    assert task.model_override == "route-a"
+
+
 def test_create_task_with_parent_is_todo_until_parent_done(kanban_home):
     with kb.connect() as conn:
         p = kb.create_task(conn, title="parent")
