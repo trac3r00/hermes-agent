@@ -1921,6 +1921,64 @@ def _load_cursorrules(cwd_path: Path, context_length: Optional[int] = None) -> s
     )
 
 
+_AUX_RULE_GLOBS = (
+    ".github/instructions*.md",
+    ".github/copilot-instructions.md",
+    ".omo/rules/**/*.md",
+    ".omo/rules/**/*.mdc",
+    ".codex/rules/**/*.md",
+    ".codex/rules/**/*.mdc",
+)
+_AUX_RULE_MAX_FILES = 8
+
+
+def _load_auxiliary_rule_files(cwd_path: Path, context_length: Optional[int] = None) -> str:
+    """Load secondary project rule files without replacing the primary context.
+
+    AGENTS/HERMES/CLAUDE remain the main context source. These files are
+    ecosystem-specific overlays used by Copilot, OMO/LazyCodex, and Codex rule
+    loaders; loading them separately lets Hermes learn those local conventions
+    without changing the first-match behavior for primary project docs.
+    """
+    seen: set[Path] = set()
+    chunks: list[str] = []
+    for pattern in _AUX_RULE_GLOBS:
+        for rule_file in sorted(cwd_path.glob(pattern)):
+            try:
+                rule_file = rule_file.resolve()
+                if rule_file in seen or not rule_file.is_file():
+                    continue
+                rule_file.relative_to(cwd_path)
+            except Exception:
+                continue
+            seen.add(rule_file)
+            if len(chunks) >= _AUX_RULE_MAX_FILES:
+                break
+            try:
+                content = rule_file.read_text(encoding="utf-8").strip()
+            except Exception as e:
+                logger.debug("Could not read %s: %s", rule_file, e)
+                continue
+            if not content:
+                continue
+            try:
+                rel = str(rule_file.relative_to(cwd_path))
+            except Exception:
+                rel = rule_file.name
+            content = _scan_context_content(_strip_yaml_frontmatter(content), rel)
+            chunks.append(f"## {rel}\n\n{content}\n")
+        if len(chunks) >= _AUX_RULE_MAX_FILES:
+            break
+    if not chunks:
+        return ""
+    return _truncate_content(
+        "\n".join(chunks),
+        "auxiliary project rules",
+        context_length=context_length,
+        read_path=str(cwd_path),
+    )
+
+
 def build_context_files_prompt(
     cwd: Optional[str] = None,
     skip_soul: bool = False,
@@ -1928,11 +1986,16 @@ def build_context_files_prompt(
 ) -> str:
     """Discover and load context files for the system prompt.
 
-    Priority (first found wins — only ONE project context type is loaded):
+    Priority:
       1. .hermes.md / HERMES.md  (walk to git root)
       2. AGENTS.md / agents.md   (cwd only)
       3. CLAUDE.md / claude.md   (cwd only)
       4. .cursorrules / .cursor/rules/*.mdc  (cwd only)
+
+    Secondary rule overlays are also loaded when present:
+      - .github/instructions*.md / copilot-instructions.md
+      - .omo/rules/**/*.{md,mdc}
+      - .codex/rules/**/*.{md,mdc}
 
     SOUL.md from HERMES_HOME is independent and always included when present.
 
@@ -1959,6 +2022,10 @@ def build_context_files_prompt(
     )
     if project_context:
         sections.append(project_context)
+
+    aux_rules = _load_auxiliary_rule_files(cwd_path, context_length)
+    if aux_rules:
+        sections.append(aux_rules)
 
     # SOUL.md from HERMES_HOME only — skip when already loaded as identity
     if not skip_soul:

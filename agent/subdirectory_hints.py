@@ -24,12 +24,22 @@ from agent.prompt_builder import _scan_context_content
 logger = logging.getLogger(__name__)
 
 # Context files to look for in subdirectories, in priority order.
-# Same filenames as prompt_builder.py but we load ALL found (not first-wins)
-# since different subdirectories may use different conventions.
+# Same primary filenames as prompt_builder.py but we load ALL found (not first-wins)
+# since different subdirectories may use different conventions.  Auxiliary globs
+# mirror ecosystem rule loaders (Cursor, GitHub Copilot, OMO, Codex).
 _HINT_FILENAMES = [
     "AGENTS.md", "agents.md",
     "CLAUDE.md", "claude.md",
     ".cursorrules",
+]
+_HINT_GLOBS = [
+    ".cursor/rules/*.mdc",
+    ".github/instructions*.md",
+    ".github/copilot-instructions.md",
+    ".omo/rules/**/*.md",
+    ".omo/rules/**/*.mdc",
+    ".codex/rules/**/*.md",
+    ".codex/rules/**/*.mdc",
 ]
 
 # Maximum chars per hint file to prevent context bloat
@@ -219,25 +229,28 @@ class SubdirectoryHintTracker:
                 return None
 
         found_hints = []
+        seen: Set[Path] = set()
+        candidates = []
         for filename in _HINT_FILENAMES:
-            hint_path = directory / filename
+            candidates.append(directory / filename)
+        for pattern in _HINT_GLOBS:
+            candidates.extend(sorted(directory.glob(pattern)))
+
+        for hint_path in candidates:
             try:
-                if not hint_path.is_file():
+                hint_path = hint_path.resolve()
+                if hint_path in seen or not hint_path.is_file():
                     continue
+                hint_path.relative_to(directory)
             except OSError:
                 continue
+            except ValueError:
+                continue
+            seen.add(hint_path)
             try:
                 content = hint_path.read_text(encoding="utf-8").strip()
                 if not content:
                     continue
-                # Same security scan as startup context loading
-                content = _scan_context_content(content, filename)
-                if len(content) > _MAX_HINT_CHARS:
-                    content = (
-                        content[:_MAX_HINT_CHARS]
-                        + f"\n\n[...truncated {filename}: {len(content):,} chars total]"
-                    )
-                # Best-effort relative path for display
                 rel_path = str(hint_path)
                 try:
                     rel_path = str(hint_path.relative_to(self.working_dir))
@@ -247,9 +260,14 @@ class SubdirectoryHintTracker:
                         rel_path = "~/" + rel_path
                     except (ValueError, RuntimeError):
                         pass  # keep absolute
+                # Same security scan as startup context loading
+                content = _scan_context_content(content, rel_path)
+                if len(content) > _MAX_HINT_CHARS:
+                    content = (
+                        content[:_MAX_HINT_CHARS]
+                        + f"\n\n[...truncated {rel_path}: {len(content):,} chars total]"
+                    )
                 found_hints.append((rel_path, content))
-                # First match wins per directory (like startup loading)
-                break
             except Exception as exc:
                 logger.debug("Could not read %s: %s", hint_path, exc)
 

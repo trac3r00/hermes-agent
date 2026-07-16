@@ -209,6 +209,27 @@ class TestSubdirectoryHintTracker:
         assert result is not None
         assert "Cursor rules for nested path" in result
 
+    def test_discovers_auxiliary_rule_globs(self, project):
+        """Subdirectory hints include GitHub/OMO/Codex ecosystem rule overlays."""
+        package = project / "package"
+        (package / ".github").mkdir(parents=True)
+        (package / ".github" / "instructions.md").write_text("GitHub package rules")
+        (package / ".omo" / "rules").mkdir(parents=True)
+        (package / ".omo" / "rules" / "quality.md").write_text("OMO package rules")
+        (package / ".codex" / "rules").mkdir(parents=True)
+        (package / ".codex" / "rules" / "local.mdc").write_text("Codex package rules")
+        (package / "file.py").write_text("print('package')")
+
+        tracker = SubdirectoryHintTracker(working_dir=str(project))
+        result = tracker.check_tool_call(
+            "read_file", {"path": str(package / "file.py")}
+        )
+
+        assert result is not None
+        assert "GitHub package rules" in result
+        assert "OMO package rules" in result
+        assert "Codex package rules" in result
+
     def test_hint_format_includes_path(self, project):
         """Discovered hints should indicate which file they came from."""
         tracker = SubdirectoryHintTracker(working_dir=str(project))

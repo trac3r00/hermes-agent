@@ -755,6 +755,37 @@ class TestBuildContextFilesPrompt:
         result = build_context_files_prompt(cwd=str(tmp_path))
         assert "ESLint" in result
 
+    def test_loads_auxiliary_rule_overlays_with_primary_context(self, tmp_path):
+        (tmp_path / "AGENTS.md").write_text("Primary project instructions.")
+        github_dir = tmp_path / ".github"
+        github_dir.mkdir()
+        (github_dir / "instructions.md").write_text("Use GitHub instruction overlay.")
+        omo_rules = tmp_path / ".omo" / "rules"
+        omo_rules.mkdir(parents=True)
+        (omo_rules / "quality.md").write_text("Use OMO quality overlay.")
+        codex_rules = tmp_path / ".codex" / "rules"
+        codex_rules.mkdir(parents=True)
+        (codex_rules / "local.mdc").write_text("Use Codex local overlay.")
+
+        result = build_context_files_prompt(cwd=str(tmp_path), skip_soul=True)
+
+        assert "Primary project instructions" in result
+        assert "Use GitHub instruction overlay" in result
+        assert "Use OMO quality overlay" in result
+        assert "Use Codex local overlay" in result
+
+    def test_auxiliary_rule_frontmatter_is_not_injected(self, tmp_path):
+        github_dir = tmp_path / ".github"
+        github_dir.mkdir()
+        (github_dir / "instructions.md").write_text(
+            "---\nmodel: expensive-model\n---\n\nFollow public repo instructions."
+        )
+
+        result = build_context_files_prompt(cwd=str(tmp_path), skip_soul=True)
+
+        assert "Follow public repo instructions" in result
+        assert "expensive-model" not in result
+
     def test_agents_md_top_level_only(self, tmp_path):
         """AGENTS.md is loaded from cwd only — subdirectory copies are ignored."""
         (tmp_path / "AGENTS.md").write_text("Top level instructions.")
