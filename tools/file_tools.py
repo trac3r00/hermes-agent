@@ -9,6 +9,7 @@ import posixpath
 import sys
 import threading
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 from agent.file_safety import get_read_block_error
 from tools.binary_extensions import has_binary_extension
@@ -1569,6 +1570,26 @@ def _mark_verification_stale(
         logger.debug("verification stale marker failed", exc_info=True)
 
 
+def _check_gateway_restart_persistence(arguments: dict[str, Any]) -> str | None:
+    """Hard-block file writes that create a gateway restart trampoline."""
+    if os.environ.get("_HERMES_GATEWAY") != "1":
+        return None
+    try:
+        from cron.lifecycle_guard import file_write_creates_gateway_restart_persistence
+
+        if file_write_creates_gateway_restart_persistence(arguments):
+            return (
+                "Blocked: cannot create a script or launchd plist that restarts "
+                "the gateway from inside the gateway process. This bypasses the "
+                "direct lifecycle guard and can terminate active sessions later. "
+                "Apply the edit, then restart from a separate operator shell."
+            )
+    except Exception:
+        logger.exception("gateway restart persistence guard failed closed")
+        return "Blocked: gateway restart persistence guard could not validate this write."
+    return None
+
+
 def write_file_tool(path: str, content: str, task_id: str = "default",
                     cross_profile: bool = False,
                     session_id: str | None = None) -> str:
@@ -1580,6 +1601,11 @@ def write_file_tool(path: str, content: str, task_id: str = "default",
     Pass ``True`` after explicit user direction — same shape as ``force``
     on the terminal tool.
     """
+    persistence_err = _check_gateway_restart_persistence(
+        {"path": path, "content": content}
+    )
+    if persistence_err:
+        return tool_error(persistence_err)
     sensitive_err = _check_sensitive_path(path, task_id)
     if sensitive_err:
         return tool_error(sensitive_err)
@@ -1662,6 +1688,15 @@ def patch_tool(mode: str = "replace", path: str = None, old_string: str = None,
     targets under another profile's skills/plugins/cron/memories
     directory. Same shape as ``write_file``'s flag.
     """
+    persistence_err = _check_gateway_restart_persistence(
+        {
+            "path": path,
+            "new_string": new_string,
+            "patch": patch,
+        }
+    )
+    if persistence_err:
+        return tool_error(persistence_err)
     # Check sensitive paths for both replace (explicit path) and V4A patch (extract paths)
     _paths_to_check = []
     if path:

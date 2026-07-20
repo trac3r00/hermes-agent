@@ -33,9 +33,13 @@ only fail (silently) when it fires.
 
 from __future__ import annotations
 
+import json
+import os
+import plistlib
 import re
+import shlex
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 
 class GatewayLifecycleBlocked(ValueError):
@@ -57,6 +61,10 @@ _GATEWAY_LIFECYCLE_PATTERN = re.compile(
     # gateway identifier prevents blocking unrelated hermes services (e.g.
     # `launchctl unload ai.hermes.update-checker.plist`).
     r"|(?:launchctl\s+(?:kickstart|unload|load|stop|restart)\b[^\n]*\bhermes[.\-]?gateway)"
+    # Branch B2: transient launchd submission whose label/payload names the
+    # gateway. This catches delayed one-shot wrappers such as
+    # ``launchctl submit -l ai.hermes.gateway-restart-once -- ...``.
+    r"|(?:launchctl\s+submit\b[^\n]*\bhermes[.\-]?gateway)"
     # Branch C: systemctl ops on a hermes-gateway unit.
     r"|(?:systemctl\s+(?:-\S+\s+)*(?:restart|stop|start)\b[^\n]*\bhermes[.\-]?gateway)"
     # Branch D: pkill / kill targeting the hermes gateway process. Both
@@ -66,11 +74,134 @@ _GATEWAY_LIFECYCLE_PATTERN = re.compile(
 )
 
 
+def _local_payload_scripts(text: str) -> tuple[Path, ...]:
+    """Return readable local script paths referenced by command-like text.
+
+    This covers both transient launchd commands and ``ProgramArguments`` read
+    from a plist. Inspecting the payload closes the wrapper indirection without
+    relying on a suspicious filename or label.
+    """
+    paths: list[Path] = []
+    for line in text.splitlines():
+        try:
+            tokens = shlex.split(line, comments=True, posix=True)
+        except ValueError:
+            tokens = line.split()
+        for token in tokens:
+            candidate = Path(os.path.expandvars(token)).expanduser()
+            if candidate.suffix.lower() not in {".sh", ".bash", ".zsh", ".command"}:
+                continue
+            if candidate.is_file() and candidate not in paths:
+                paths.append(candidate)
+    return tuple(paths)
+
+
+def _payload_contains_gateway_lifecycle(payload: str, *, depth: int = 0) -> bool:
+    """Scan command text and readable local script/plist payloads recursively."""
+    if _GATEWAY_LIFECYCLE_PATTERN.search(payload):
+        return True
+    if depth >= 2:
+        return False
+    for script_path in _local_payload_scripts(payload):
+        try:
+            script = script_path.read_bytes().decode("utf-8", errors="replace")
+        except OSError:
+            continue
+        if _payload_contains_gateway_lifecycle(script, depth=depth + 1):
+            return True
+    return False
+
+
+def _candidate_persistence_files(arguments: dict[str, Any]) -> tuple[Path, ...]:
+    """Extract local scripts/plists targeted by a file-write tool call."""
+    candidates: list[Path] = []
+    path = arguments.get("path")
+    if isinstance(path, str) and path.strip():
+        candidates.append(Path(os.path.expandvars(path)).expanduser())
+    patch = arguments.get("patch")
+    if isinstance(patch, str):
+        for match in re.finditer(
+            r"^\*\*\*\s*(?:Update|Add)\s+File:\s*(.+)$", patch, re.MULTILINE
+        ):
+            candidates.append(
+                Path(os.path.expandvars(match.group(1).strip())).expanduser()
+            )
+    return tuple(candidates)
+
+
+def _plist_payload(content: str) -> str:
+    try:
+        parsed = plistlib.loads(content.encode("utf-8"))
+    except Exception:
+        return content
+    if not isinstance(parsed, dict):
+        return content
+    label = parsed.get("Label", "")
+    args = parsed.get("ProgramArguments", [])
+    program = parsed.get("Program", "")
+    return " ".join([str(label), str(program), *(str(item) for item in args)])
+
+
+def file_write_creates_gateway_restart_persistence(arguments: dict[str, Any]) -> bool:
+    """Detect script/plist writes that can later restart the current gateway.
+
+    Direct file tools bypass terminal approval. This preflight lets the gateway
+    reject one-shot launchd wrappers before they are written, including a plist
+    that points at an already-existing restart script.
+    """
+    raw_contents = [
+        value
+        for key in ("content", "new_string", "patch")
+        if isinstance((value := arguments.get(key)), str)
+    ]
+    candidates = _candidate_persistence_files(arguments)
+    for candidate in candidates:
+        suffix = candidate.suffix.lower()
+        for content in raw_contents:
+            payload = _plist_payload(content) if suffix == ".plist" else content
+            if _payload_contains_gateway_lifecycle(payload):
+                return True
+    return False
+
+
+def serialized_tool_call_creates_gateway_restart_persistence(text: str) -> bool:
+    """Best-effort detector for serialized write_file/patch tool calls."""
+    if not text or not re.search(r'(?i)"?(?:write_file|patch)"?', text):
+        return False
+    try:
+        value = json.loads(text)
+    except (TypeError, ValueError):
+        return False
+
+    def _walk(node: Any) -> bool:
+        if isinstance(node, list):
+            return any(_walk(item) for item in node)
+        if not isinstance(node, dict):
+            return False
+        name = node.get("name")
+        arguments = node.get("arguments")
+        function = node.get("function")
+        if isinstance(function, dict):
+            name = function.get("name", name)
+            arguments = function.get("arguments", arguments)
+        if name in {"write_file", "patch"}:
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except (TypeError, ValueError):
+                    arguments = {}
+            if isinstance(arguments, dict) and file_write_creates_gateway_restart_persistence(arguments):
+                return True
+        return any(_walk(item) for item in node.values())
+
+    return _walk(value)
+
+
 def contains_gateway_lifecycle_command(text: str) -> bool:
-    """Return True if *text* contains a gateway lifecycle command pattern."""
+    """Return True if *text* or a submitted launchd script targets the gateway."""
     if not text:
         return False
-    return bool(_GATEWAY_LIFECYCLE_PATTERN.search(text))
+    return _payload_contains_gateway_lifecycle(text)
 
 
 def _resolve_script_path(script_path: str) -> Path:

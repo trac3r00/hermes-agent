@@ -338,6 +338,38 @@ class TestTerminalToolGatewayLifecycleGuard:
         assert result["exit_code"] == 1
         assert "Blocked" in result["error"]
 
+    def test_blocks_launchctl_submit_with_gateway_label(self, monkeypatch):
+        import tools.terminal_tool as tt
+        self._patch_env(monkeypatch, self._make_fake_env(), inside_gateway=True)
+
+        result = json.loads(tt.terminal_tool(
+            command=(
+                "launchctl submit -l ai.hermes.gateway-restart-once -- "
+                "/bin/zsh -lc 'sleep 8; hermes gateway restart'"
+            )
+        ))
+
+        assert result["exit_code"] == 1
+        assert "Blocked" in result["error"]
+
+    def test_blocks_launchctl_submit_of_gateway_restart_script(
+        self, monkeypatch, tmp_path
+    ):
+        import tools.terminal_tool as tt
+        self._patch_env(monkeypatch, self._make_fake_env(), inside_gateway=True)
+        script = tmp_path / "oneshot.sh"
+        script.write_text(
+            "#!/bin/bash\nsleep 25\nlaunchctl kickstart -k gui/501/ai.hermes.gateway\n",
+            encoding="utf-8",
+        )
+
+        result = json.loads(tt.terminal_tool(
+            command=f"launchctl submit -l ai.bob.oneshot-kick -- /bin/bash {script}"
+        ))
+
+        assert result["exit_code"] == 1
+        assert "Blocked" in result["error"]
+
     def test_safe_systemctl_commands_pass_through(self, monkeypatch):
         """Non-hermes systemctl commands must not be blocked by this guard."""
         import tools.terminal_tool as tt

@@ -5564,8 +5564,11 @@ def run_conversation(
                     from agent.verify_hooks import max_verify_nudges
                     from hermes_cli.plugins import get_pre_verify_continue_message, has_hook
 
-                    if _edited and has_hook("pre_verify") and _attempt < max_verify_nudges():
-                        # Posture is fixed for the session — resolve once + cache.
+                    if has_hook("pre_verify") and _attempt < max_verify_nudges():
+                        # pre_verify is a general pre-finalization continuation
+                        # control point. Coding hooks can still use changed_paths,
+                        # while verification plugins (for example Bob's live-fact
+                        # gate) must also run on read-only/tool-backed turns.
                         coding = getattr(agent, "_resolved_is_coding", None)
                         if coding is None:
                             from agent.coding_context import is_coding_context

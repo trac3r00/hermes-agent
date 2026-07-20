@@ -590,6 +590,54 @@ class TestSearchHints:
 # ---------------------------------------------------------------------------
 
 
+class TestGatewayRestartPersistenceGuard:
+    def test_write_script_blocked_inside_gateway(self, monkeypatch, tmp_path):
+        from tools.file_tools import write_file_tool
+
+        monkeypatch.setenv("_HERMES_GATEWAY", "1")
+        target = tmp_path / "oneshot.sh"
+        result = json.loads(write_file_tool(
+            str(target),
+            "#!/bin/bash\nlaunchctl kickstart -k gui/501/ai.hermes.gateway\n",
+        ))
+
+        assert "error" in result
+        assert "cannot create" in result["error"]
+        assert not target.exists()
+
+    def test_write_launchd_plist_for_existing_script_blocked(
+        self, monkeypatch, tmp_path
+    ):
+        from tools.file_tools import write_file_tool
+
+        monkeypatch.setenv("_HERMES_GATEWAY", "1")
+        script = tmp_path / "restart.sh"
+        script.write_text("#!/bin/bash\nhermes gateway restart\n", encoding="utf-8")
+        plist = tmp_path / "ai.bob.oneshot.plist"
+        content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>Label</key><string>ai.bob.oneshot</string>
+<key>ProgramArguments</key><array><string>/bin/bash</string><string>{script}</string></array>
+</dict></plist>"""
+
+        result = json.loads(write_file_tool(str(plist), content))
+
+        assert "error" in result
+        assert "cannot create" in result["error"]
+        assert not plist.exists()
+
+    def test_safe_script_is_not_rejected_by_gateway_guard(self, monkeypatch, tmp_path):
+        from tools.file_tools import _check_gateway_restart_persistence
+
+        monkeypatch.setenv("_HERMES_GATEWAY", "1")
+        target = tmp_path / "safe.sh"
+
+        assert _check_gateway_restart_persistence({
+            "path": str(target),
+            "content": "#!/bin/bash\necho healthy\n",
+        }) is None
+
+
 class TestSensitivePathCheck:
     """Verify that _check_sensitive_path blocks writes to protected locations."""
 

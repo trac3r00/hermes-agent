@@ -1,10 +1,11 @@
 """Verification-loop helpers for the ``pre_verify`` round-end gate.
 
-When the agent has edited code and is about to verify/finish, the loop fires the
-``pre_verify`` hook (user directives resolved by
+When the agent is about to finish, the loop fires the ``pre_verify`` hook (user
+directives resolved by
 :func:`hermes_cli.plugins.get_pre_verify_continue_message`). A directive keeps
-the agent going one more turn — run a check, defer it, tidy the diff — instead of
-stopping immediately.
+the agent going one more turn instead of stopping immediately. Coding policies
+receive ``changed_paths`` for run-check/tidy-diff workflows; read-only plugins
+can also continue a turn for retrieval or other pre-finalization verification.
 
 The shipped coding guidance lives on the evidence-based verification-stop nudge
 (``agent/verification_stop.py``), not as a second default stop gate. That keeps
