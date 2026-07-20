@@ -36,6 +36,7 @@ from gateway.config import GatewayConfig, HomeChannel, Platform
 from gateway.platforms.base import MessageEvent, MessageType, SendResult
 from gateway.run import (
     _AGENT_PENDING_SENTINEL,
+    _AUTO_RESUME_EVENT_TEXT,
     _auto_continue_freshness_window,
     _coerce_gateway_timestamp,
     _is_fresh_gateway_interruption,
@@ -1061,10 +1062,11 @@ async def test_startup_auto_resume_schedules_fresh_pending_sessions():
     assert event.internal is True
     assert event.message_type == MessageType.TEXT
     assert event.source == source
-    # Text is empty — the existing _is_resume_pending branch in
-    # _handle_message_with_agent owns the system-note injection so we don't
-    # double it up.
-    assert event.text == ""
+    # Text carries the non-empty auto-resume marker — the existing
+    # _is_resume_pending branch in _handle_message_with_agent swaps it for
+    # the recovery note, and if that branch misses, the marker itself
+    # instructs the model (never a blank user turn).
+    assert event.text == _AUTO_RESUME_EVENT_TEXT
 
 
 @pytest.mark.asyncio
@@ -1350,7 +1352,8 @@ async def test_reconnect_reschedules_pending_after_late_platform_connect():
     assert isinstance(event, MessageEvent)
     assert event.internal is True
     assert event.message_type == MessageType.TEXT
-    assert event.text == ""
+    assert event.text == _AUTO_RESUME_EVENT_TEXT
+
     assert event.source == source
 
 

@@ -615,6 +615,20 @@ def _telegramize_command_mentions(text: str, platform: Any) -> str:
 # ``config.yaml`` ``agent.gateway_auto_continue_freshness``.
 _AUTO_CONTINUE_FRESHNESS_SECS_DEFAULT = 60 * 60
 
+# Non-empty marker text for the startup auto-resume turn synthesized by
+# ``_schedule_resume_pending_sessions``.  The turn used to carry ``text=""``
+# and rely on the ``_is_resume_pending`` branch to swap in a recovery note —
+# but when the resume marker is cleared (or freshness signals disagree)
+# between scheduling and dispatch, the safety-net condition no longer
+# matches and the model receives a literally blank user turn, replying with
+# confused "the message came through blank" noise (observed as 4 blank
+# Slack bubbles per restart).  A self-sufficient non-empty marker means the
+# model NEVER sees a blank turn regardless of which branch fires.
+_AUTO_RESUME_EVENT_TEXT = (
+    "[Gateway auto-resume] Continue the interrupted task from the existing "
+    "conversation without asking the user to repeat it."
+)
+
 
 def _coerce_gateway_timestamp(value: Any) -> Optional[float]:
     """Best-effort conversion of stored gateway timestamps to epoch seconds.
@@ -734,6 +748,11 @@ def build_resume_recovery_note(
     silently abandoned behind a "restored" acknowledgement that goes
     nowhere (#57056).
     """
+    # The synthetic auto-resume marker is not a human message — normalize it
+    # to the no-new-message path so the guidance (not the marker) owns the
+    # wording and the marker text is never echoed back as a "user message".
+    if message == _AUTO_RESUME_EVENT_TEXT:
+        message = ""
     reason_phrase = (
         "a gateway restart"
         if reason == "restart_timeout"
@@ -6837,7 +6856,12 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         # is now in the loop). Defenses 1-2 cover the cron/CLI/terminal paths;
         # this catches every other SIGTERM source (e.g. a raw `terminal(
         # "launchctl kickstart ai.hermes.gateway")`).
-        if candidates:
+        # Count only boots where at least one candidate can actually be
+        # dispatched (its adapter is connected) — a boot that skips every
+        # candidate (platform not yet ready) resumes nothing and must not
+        # accrue toward the breaker, or a later reconnect-scoped pass gets
+        # falsely suppressed.
+        if any(self._adapter_for_source(entry.origin) is not None for entry in candidates):
             try:
                 from gateway import restart_loop_guard as _rlg
 
@@ -6899,11 +6923,13 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             self._running_agents_ts[entry.session_key] = time.time()
             self._persist_active_agents()
 
-            # Empty-text internal event — the _is_resume_pending branch in
-            # _handle_message_with_agent prepends the proper reason-aware
-            # system note before the turn runs.
+            # Non-empty internal marker — the _is_resume_pending branch in
+            # _handle_message_with_agent swaps it for the reason-aware
+            # recovery note; if that branch misses (marker cleared between
+            # scheduling and dispatch), the marker text itself instructs the
+            # model, so a blank user turn can never reach the model.
             event = MessageEvent(
-                text="",
+                text=_AUTO_RESUME_EVENT_TEXT,
                 message_type=MessageType.TEXT,
                 source=source,
                 internal=True,
@@ -19647,24 +19673,29 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 if _srn:
                     message = _srn + "\n\n" + message
 
-            # Safety net: a startup auto-resume event carries empty
-            # text and relies on the resume_pending branch above to supply the
-            # recovery note.  If that branch did not fire for any reason (e.g.
-            # both freshness signals disagreed, or the marker was cleared
-            # between scheduling and dispatch) we must NOT hand the model a
-            # blank user turn — it responds with confused "the message came
-            # through blank" noise.  Restricted to resume_pending sessions so
-            # legitimately empty user turns (e.g. an image with no caption,
-            # wrapped as native content below) are untouched.
-            if (
-                isinstance(message, str)
-                and not message.strip()
-                and _resume_entry is not None
-                and getattr(_resume_entry, "resume_pending", False)
+            # Safety net: the startup auto-resume event carries the synthetic
+            # marker text and relies on the resume_pending branch above to
+            # swap in the recovery note.  If that branch did not fire for any
+            # reason (e.g. both freshness signals disagreed, or the marker was
+            # cleared between scheduling and dispatch) we must NOT hand the
+            # model the raw marker (or, legacy case, a blank turn) — convert
+            # it to the recovery note here.  Restricted to the marker text and
+            # to blank turns on resume_pending sessions so legitimately empty
+            # user turns (e.g. an image with no caption, wrapped as native
+            # content below) are untouched.
+            if isinstance(message, str) and (
+                message == _AUTO_RESUME_EVENT_TEXT
+                or (
+                    not message.strip()
+                    and _resume_entry is not None
+                    and getattr(_resume_entry, "resume_pending", False)
+                )
             ):
                 _sn_reason = (
-                    getattr(_resume_entry, "resume_reason", None) or "restart_timeout"
-                )
+                    getattr(_resume_entry, "resume_reason", None)
+                    if _resume_entry is not None
+                    else None
+                ) or "restart_timeout"
                 _sn_adapter = self._adapter_for_source(source)
                 message = build_resume_recovery_note(
                     _sn_reason,
