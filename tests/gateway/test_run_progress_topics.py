@@ -697,6 +697,21 @@ class QueuedCommentaryAgent:
         }
 
 
+class QueuedBackgroundSilentAckAgent:
+    calls = 0
+
+    def __init__(self, **kwargs):
+        self.tools = []
+
+    def run_conversation(self, message, conversation_history=None, task_id=None):
+        type(self).calls += 1
+        return {
+            "final_response": "NO_REPLY" if type(self).calls == 1 else "follow-up answer",
+            "messages": [],
+            "api_calls": 1,
+        }
+
+
 class BackgroundReviewAgent:
     def __init__(self, **kwargs):
         self.background_review_callback = kwargs.get("background_review_callback")
@@ -746,6 +761,7 @@ async def _run_with_agent(
     chat_type="group",
     thread_id="17585",
     adapter_cls=ProgressCaptureAdapter,
+    background_notification=False,
 ):
     if config_data:
         import yaml
@@ -791,6 +807,7 @@ async def _run_with_agent(
         source=source,
         session_id=session_id,
         session_key=session_key,
+        background_notification=background_notification,
     )
     return adapter, result
 
@@ -1088,6 +1105,47 @@ async def test_run_agent_queued_message_does_not_treat_commentary_as_final(monke
     assert result["final_response"] == "final response 2"
     assert "I'll inspect the repo first." in sent_texts
     assert "final response 1" in sent_texts
+
+
+@pytest.mark.asyncio
+async def test_background_silent_ack_marks_final_delivery_suppressed(monkeypatch, tmp_path):
+    # Given: a background-notification turn whose agent returns NO_REPLY.
+    QueuedBackgroundSilentAckAgent.calls = 0
+
+    # When: the ordinary final-delivery path completes.
+    adapter, result = await _run_with_agent(
+        monkeypatch,
+        tmp_path,
+        QueuedBackgroundSilentAckAgent,
+        session_id="sess-bg-silent-ack-final",
+        config_data={"display": {"tool_progress": "off", "interim_assistant_messages": False}},
+        background_notification=True,
+    )
+
+    # Then: the caller receives the existing already-sent suppression signal.
+    assert result["already_sent"] is True
+    assert adapter.sent == []
+
+
+@pytest.mark.asyncio
+async def test_queued_followup_does_not_send_background_silent_ack(monkeypatch, tmp_path):
+    # Given: a background notification returns NO_REPLY before a queued user turn.
+    QueuedBackgroundSilentAckAgent.calls = 0
+
+    # When: the queued-follow-up path completes both turns.
+    adapter, result = await _run_with_agent(
+        monkeypatch,
+        tmp_path,
+        QueuedBackgroundSilentAckAgent,
+        session_id="sess-bg-silent-ack-queued",
+        pending_text="queued follow-up",
+        config_data={"display": {"tool_progress": "off", "interim_assistant_messages": False}},
+        background_notification=True,
+    )
+
+    # Then: the first-turn sentinel produces no platform bubble.
+    assert result["final_response"] == "follow-up answer"
+    assert adapter.sent == []
 
 
 @pytest.mark.asyncio
