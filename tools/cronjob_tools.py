@@ -676,6 +676,7 @@ def cronjob(
     enabled_toolsets: Optional[List[str]] = None,
     workdir: Optional[str] = None,
     no_agent: Optional[bool] = None,
+    script_pre_gate: Optional[bool] = None,
     attach_to_session: Optional[bool] = None,
     task_id: str = None,
 ) -> str:
@@ -749,6 +750,7 @@ def cronjob(
                 enabled_toolsets=enabled_toolsets or None,
                 workdir=_normalize_optional_job_value(workdir),
                 no_agent=_no_agent,
+                script_pre_gate=bool(script_pre_gate),
                 attach_to_session=attach_to_session,
             )
             _notify_provider_jobs_changed_safe()
@@ -941,6 +943,8 @@ def cronjob(
                             success=False,
                         )
                 updates["no_agent"] = target_no_agent
+            if script_pre_gate is not None:
+                updates["script_pre_gate"] = bool(script_pre_gate)
             if repeat is not None:
                 # Normalize: treat 0 or negative as None (infinite)
                 normalized_repeat = None if repeat <= 0 else repeat
@@ -1059,6 +1063,10 @@ Important safety rule: cron-run sessions should not recursively schedule more cr
                     "WHEN TO USE False (default): anything that needs reasoning — summarize a feed, draft a daily briefing, pick interesting items, rephrase data for a human, follow conditional logic based on content."
                 ),
             },
+            "script_pre_gate": {
+                "type": "boolean",
+                "description": "Opt-in change-detection gate for agent jobs with script: when true, successful empty stdout silently skips the LLM; non-empty stdout still runs the agent with that output as context. Default false preserves existing script-job behavior.",
+            },
             "context_from": {
                 "type": "array",
                 "items": {"type": "string"},
@@ -1140,6 +1148,7 @@ registry.register(
         enabled_toolsets=args.get("enabled_toolsets"),
         workdir=args.get("workdir"),
         no_agent=args.get("no_agent"),
+        script_pre_gate=args.get("script_pre_gate"),
         task_id=kw.get("task_id"),
     ))(),
     check_fn=check_cronjob_requirements,

@@ -1086,6 +1086,7 @@ def create_job(
     enabled_toolsets: Optional[List[str]] = None,
     workdir: Optional[str] = None,
     no_agent: bool = False,
+    script_pre_gate: bool = False,
     attach_to_session: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
@@ -1131,6 +1132,9 @@ def create_job(
                 and deliver its stdout directly. Empty stdout = silent (no
                 delivery). Requires ``script`` to be set. Ideal for classic
                 watchdogs and periodic alerts that don't need LLM reasoning.
+        script_pre_gate: For an agent job with ``script``, skip the agent silently
+                when successful script stdout is empty. Defaults to False so
+                existing script-backed jobs still run their prompt every tick.
 
     Returns:
         The created job dict
@@ -1162,6 +1166,7 @@ def create_job(
     normalized_toolsets = normalized_toolsets or None
     normalized_workdir = _normalize_workdir(workdir)
     normalized_no_agent = bool(no_agent)
+    normalized_script_pre_gate = bool(script_pre_gate)
     normalized_attach = attach_to_session if isinstance(attach_to_session, bool) else None
 
     # no_agent jobs are meaningless without a script — the script IS the job.
@@ -1171,6 +1176,11 @@ def create_job(
         raise ValueError(
             "no_agent=True requires a script — with no agent and no script "
             "there is nothing for the job to run."
+        )
+    if normalized_script_pre_gate and not normalized_script:
+        raise ValueError(
+            "script_pre_gate=True requires a script — the gate cannot decide "
+            "whether to wake the agent without script output."
         )
 
     # Normalize context_from: accept str or list of str, store as list or None
@@ -1230,6 +1240,7 @@ def create_job(
         "base_url": normalized_base_url,
         "script": normalized_script,
         "no_agent": normalized_no_agent,
+        "script_pre_gate": normalized_script_pre_gate,
         "context_from": context_from,
         "schedule": parsed_schedule,
         "schedule_display": parsed_schedule.get("display", schedule),

@@ -69,6 +69,23 @@ class TestJobScriptField:
         job = create_job(prompt="Hello", schedule="every 1h", script="  ")
         assert job.get("script") is None
 
+    def test_script_pre_gate_is_explicit_and_defaults_off(self, cron_env):
+        from cron.jobs import create_job
+
+        ordinary = create_job(prompt="Hello", schedule="every 1h", script="check.py")
+        gated = create_job(
+            prompt="Hello", schedule="every 1h", script="check.py", script_pre_gate=True
+        )
+
+        assert ordinary["script_pre_gate"] is False
+        assert gated["script_pre_gate"] is True
+
+    def test_script_pre_gate_requires_script(self, cron_env):
+        from cron.jobs import create_job
+
+        with pytest.raises(ValueError, match="script_pre_gate=True requires a script"):
+            create_job(prompt="Hello", schedule="every 1h", script_pre_gate=True)
+
     def test_update_job_add_script(self, cron_env):
         from cron.jobs import create_job, update_job
 

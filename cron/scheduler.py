@@ -2335,6 +2335,12 @@ def _parse_wake_gate(script_output: str) -> bool:
     return gate.get("wakeAgent", True) is not False
 
 
+def _script_pre_gate_skips_agent(job: dict, prerun_script: tuple[bool, str]) -> bool:
+    """Whether an opt-in script pre-gate suppresses this agent run."""
+    success, stdout = prerun_script
+    return bool(job.get("script_pre_gate")) and success and not stdout.strip()
+
+
 def _build_job_prompt(job: dict, prerun_script: Optional[tuple] = None) -> str:
     """Build the effective prompt for a cron job, optionally loading one or more skills first.
 
@@ -2374,8 +2380,10 @@ def _build_job_prompt(job: dict, prerun_script: Optional[tuple] = None) -> str:
                 )
                 has_injected_data = True
             else:
-                # Script produced no output — nothing to report, skip AI call.
-                return None
+                # Empty stdout alone is not a gate: existing script-backed
+                # agent jobs may need their prompt to run every tick. The
+                # scheduler handles explicit script_pre_gate short-circuiting.
+                pass
         else:
             prompt = (
                 "## Script Error\n"
@@ -2875,6 +2883,15 @@ def run_job(
                 f"**Job ID:** {job_id}\n"
                 f"**Run Time:** {_hermes_now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
                 "Script gate returned `wakeAgent=false` — agent skipped.\n"
+            )
+            return True, silent_doc, SILENT_MARKER, None
+        if _script_pre_gate_skips_agent(job, prerun_script):
+            logger.info("Job '%s': script pre-gate saw empty stdout, skipping agent run", job_name)
+            silent_doc = (
+                f"# Cron Job: {job_name}\n\n"
+                f"**Job ID:** {job_id}\n"
+                f"**Run Time:** {_hermes_now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                "Script pre-gate returned empty stdout — agent skipped.\n"
             )
             return True, silent_doc, SILENT_MARKER, None
 

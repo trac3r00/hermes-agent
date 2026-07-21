@@ -422,8 +422,27 @@ class TestBuildSkillsSystemPrompt:
         )
         result = build_skills_system_prompt()
         assert "python-debug" in result
-        assert "Debug Python scripts" in result
+        assert "Debug Python scripts" not in result
         assert "available_skills" in result
+
+    def test_default_index_is_compact_and_requires_discovery(self, monkeypatch, tmp_path):
+        """The cached system prompt exposes stable categories, not a full catalog."""
+        monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+        for name, description in (("alpha", "Alpha's long workflow description"),
+                                  ("beta", "Beta's long workflow description")):
+            skill_dir = tmp_path / "skills" / "automation" / name
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text(
+                f"---\nname: {name}\ndescription: {description}\n---\n"
+            )
+
+        result = build_skills_system_prompt()
+
+        assert "automation (2 skills)" in result
+        assert "Alpha's long workflow description" not in result
+        assert "Beta's long workflow description" not in result
+        assert "skills_list(category=...)" in result
+        assert "skill_view(name)" in result
 
     def test_deduplicates_skills(self, monkeypatch, tmp_path):
         monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -433,8 +452,8 @@ class TestBuildSkillsSystemPrompt:
             d.mkdir(parents=True, exist_ok=True)
             (d / "SKILL.md").write_text("---\ndescription: Search stuff\n---\n")
         result = build_skills_system_prompt()
-        # "search" should appear only once per category
-        assert result.count("- search") == 1
+        # "search" should appear only once in the compact category index.
+        assert result.count("search") == 1
 
     def test_compact_categories_demoted_to_names_only(self, monkeypatch, tmp_path):
         """Posture-driven demotion keeps every skill NAME visible.
@@ -455,13 +474,13 @@ class TestBuildSkillsSystemPrompt:
         result = build_skills_system_prompt(
             compact_categories=frozenset({"social-media"})
         )
-        # Coding-adjacent category keeps its full entry.
-        assert "pr-review" in result and "Does pr-review things" in result
-        # Demoted category: name stays visible, description is dropped.
+        # Every category keeps names, while descriptions are always dropped.
+        assert "pr-review" in result and "Does pr-review things" not in result
+        # Demoted category remains discoverable by name.
         assert "tweet-stuff" in result
         assert "Does tweet-stuff things" not in result
-        assert "social-media [names only]" in result
-        # Disclosure note explains the demotion and how to load.
+        assert "social-media (1 skill)" in result
+        # Discovery contract explains how to load.
         assert "skill_view" in result
 
     def test_compact_categories_demote_nested_and_miss_cache_separately(
@@ -473,8 +492,7 @@ class TestBuildSkillsSystemPrompt:
         (d / "SKILL.md").write_text(
             "---\nname: thread-writer\ndescription: Write threads\n---\n"
         )
-        # Nested category ("social-media/twitter") demoted via its parent:
-        # name visible, description gone.
+        # Nested category remains named but descriptions are omitted.
         compact = build_skills_system_prompt(
             compact_categories=frozenset({"social-media"})
         )
@@ -482,7 +500,8 @@ class TestBuildSkillsSystemPrompt:
         assert "Write threads" not in compact
         # Unfiltered call must not be served from the compacted cache entry.
         full = build_skills_system_prompt()
-        assert "Write threads" in full
+        assert "thread-writer" in full
+        assert "Write threads" not in full
 
     def test_excludes_incompatible_platform_skills(self, monkeypatch, tmp_path):
         """Skills with platforms: [macos] should not appear on Linux."""
@@ -530,7 +549,7 @@ class TestBuildSkillsSystemPrompt:
             result = build_skills_system_prompt()
 
         assert "imessage" in result
-        assert "Send iMessages" in result
+        assert "Send iMessages" not in result
 
     def test_excludes_disabled_skills(self, monkeypatch, tmp_path):
         """Skills in the user's disabled list should not appear in the system prompt."""

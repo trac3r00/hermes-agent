@@ -2976,6 +2976,22 @@ class TestRunJobWakeGate:
         agent_cls.assert_called_once()
 
 
+class TestScriptPreGate:
+    def test_empty_stdout_only_skips_when_opted_in(self):
+        from cron.scheduler import _script_pre_gate_skips_agent
+
+        assert _script_pre_gate_skips_agent({"script_pre_gate": False}, (True, "")) is False
+        assert _script_pre_gate_skips_agent({}, (True, "\n\t")) is False
+        assert _script_pre_gate_skips_agent({"script_pre_gate": True}, (True, "\n\t")) is True
+
+    def test_nonempty_or_failed_script_never_skips(self):
+        from cron.scheduler import _script_pre_gate_skips_agent
+
+        job = {"script_pre_gate": True}
+        assert _script_pre_gate_skips_agent(job, (True, "new item")) is False
+        assert _script_pre_gate_skips_agent(job, (False, "")) is False
+
+
 class TestBuildJobPromptMissingSkill:
     """Verify that a missing skill logs a warning and does not crash the job."""
 

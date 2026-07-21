@@ -267,7 +267,7 @@ class TestMaybePersistToolResult:
         # command string — see test_large_content_via_stdin for why).
         assert env.execute.call_args[1]["stdin_data"] == content
 
-    def test_above_threshold_no_env_truncates_inline(self):
+    def test_above_threshold_no_env_persists_inline_handle(self):
         content = "x" * 60_000
         result = maybe_persist_tool_result(
             content=content,
@@ -276,11 +276,30 @@ class TestMaybePersistToolResult:
             env=None,
             threshold=30_000,
         )
-        assert PERSISTED_OUTPUT_TAG not in result
-        assert "Truncated" in result
+        assert PERSISTED_OUTPUT_TAG in result
+        assert "tc_789.txt" in result
         assert len(result) < len(content)
 
-    def test_env_write_failure_falls_back_to_truncation(self):
+    def test_above_threshold_without_environment_persists_local_copy(self, monkeypatch, tmp_path):
+        """Compaction must never discard the only retrievable full result."""
+        import tools.tool_result_storage as storage
+
+        monkeypatch.setattr(storage, "STORAGE_DIR", str(tmp_path / "results"))
+        content = "full-result-marker\n" + "x" * 60_000
+        result = storage.maybe_persist_tool_result(
+            content=content,
+            tool_name="terminal",
+            tool_use_id="tc_local",
+            env=None,
+            threshold=30_000,
+        )
+
+        saved = tmp_path / "results" / "tc_local.txt"
+        assert PERSISTED_OUTPUT_TAG in result
+        assert str(saved) in result
+        assert saved.read_text() == content
+
+    def test_env_write_failure_persists_local_fallback(self):
         env = MagicMock()
         env.execute.return_value = {"output": "disk full", "returncode": 1}
         content = "x" * 60_000
@@ -291,10 +310,10 @@ class TestMaybePersistToolResult:
             env=env,
             threshold=30_000,
         )
-        assert PERSISTED_OUTPUT_TAG not in result
-        assert "Truncated" in result
+        assert PERSISTED_OUTPUT_TAG in result
+        assert "tc_fail.txt" in result
 
-    def test_env_execute_exception_falls_back(self):
+    def test_env_execute_exception_persists_local_fallback(self):
         env = MagicMock()
         env.execute.side_effect = RuntimeError("connection lost")
         content = "x" * 60_000
@@ -305,7 +324,8 @@ class TestMaybePersistToolResult:
             env=env,
             threshold=30_000,
         )
-        assert "Truncated" in result
+        assert PERSISTED_OUTPUT_TAG in result
+        assert "tc_exc.txt" in result
 
     def test_read_file_never_persisted(self):
         """read_file has threshold=inf, should never be persisted."""

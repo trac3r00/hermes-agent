@@ -28,6 +28,7 @@ import os
 import re
 import shlex
 import uuid
+from pathlib import Path
 
 from tools.budget_config import (
     DEFAULT_PREVIEW_SIZE_CHARS,
@@ -55,7 +56,7 @@ def _resolve_storage_dir(env) -> str:
             except Exception as exc:
                 logger.debug("Could not resolve env temp dir: %s", exc)
             else:
-                if temp_dir:
+                if isinstance(temp_dir, str) and temp_dir:
                     temp_dir = temp_dir.rstrip("/") or "/"
                     return f"{temp_dir}/hermes-results"
     return STORAGE_DIR
@@ -114,6 +115,18 @@ def _write_to_sandbox(content: str, remote_path: str, env) -> bool:
     cmd = f"mkdir -p {shlex.quote(storage_dir)} && cat > {shlex.quote(remote_path)}"
     result = env.execute(cmd, timeout=30, stdin_data=content)
     return result.get("returncode", 1) == 0
+
+
+def _write_local_result(content: str, path: str) -> bool:
+    """Persist locally when no execution environment is available."""
+    try:
+        result_path = Path(path)
+        result_path.parent.mkdir(parents=True, exist_ok=True)
+        result_path.write_text(content, encoding="utf-8")
+        return True
+    except OSError as exc:
+        logger.warning("Local result persistence failed for %s: %s", path, exc)
+        return False
 
 
 def _build_persisted_message(
@@ -188,6 +201,13 @@ def maybe_persist_tool_result(
                 return _build_persisted_message(preview, has_more, len(content), remote_path)
         except Exception as exc:
             logger.warning("Sandbox write failed for %s: %s", tool_use_id, exc)
+
+    # If remote persistence failed (or no environment is active), preserve a
+    # local durable copy rather than reducing the only result to irreversible
+    # truncation. Local backends can retrieve this directly with read_file;
+    # remote failure still leaves an auditable on-disk handle.
+    if _write_local_result(content, remote_path):
+        return _build_persisted_message(preview, has_more, len(content), remote_path)
 
     logger.info(
         "Inline-truncating large tool result: %s (%d chars, no sandbox write)",

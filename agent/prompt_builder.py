@@ -1689,67 +1689,28 @@ def build_skills_system_prompt(
         if cat.split("/", 1)[0] in (compact_categories or frozenset())
     )
 
-    hidden_note = ""
-    if demoted:
-        hidden_note = (
-            "\n(Categories marked [names only] are outside the current coding "
-            "context, so their descriptions are omitted — the skills work "
-            "normally and load with skill_view(name) as usual.)"
-        )
-
     if not skills_by_category:
         result = ""
     else:
         index_lines = []
         for category in sorted(skills_by_category.keys()):
-            # Deduplicate and sort skills within each category
-            seen = set()
-            if category in demoted:
-                names = sorted({name for name, _ in skills_by_category[category]})
-                index_lines.append(f"  {category} [names only]: {', '.join(names)}")
-                continue
-            cat_desc = category_descriptions.get(category, "")
-            if cat_desc:
-                index_lines.append(f"  {category}: {cat_desc}")
-            else:
-                index_lines.append(f"  {category}:")
-            for name, desc in sorted(skills_by_category[category], key=lambda x: x[0]):
-                if name in seen:
-                    continue
-                seen.add(name)
-                if desc:
-                    index_lines.append(f"    - {name}: {desc}")
-                else:
-                    index_lines.append(f"    - {name}")
+            # Keep names as a compact recall index, but omit every description
+            # from the cached prompt. skills_list remains mandatory discovery
+            # before skill_view and exposes the full current catalog.
+            names = sorted({name for name, _ in skills_by_category[category]})
+            index_lines.append(f"  {category} ({len(names)} {'skill' if len(names) == 1 else 'skills'}): {', '.join(names)}")
 
         result = (
             "## Skills (mandatory)\n"
-            "Before replying, scan the skills below. If a skill matches or is even partially relevant "
-            "to your task, you MUST load it with skill_view(name) and follow its instructions. "
-            "Err on the side of loading — it is always better to have context you don't need "
-            "than to miss critical steps, pitfalls, or established workflows. "
-            "Skills contain specialized knowledge — API endpoints, tool-specific commands, "
-            "and proven workflows that outperform general-purpose approaches. Load the skill "
-            "even if you think you could handle the task with basic tools like web_search or terminal. "
-            "Skills also encode the user's preferred approach, conventions, and quality standards "
-            "for tasks like code review, planning, and testing — load them even for tasks you "
-            "already know how to do, because the skill defines how it should be done here.\n"
-            "Whenever the user asks you to configure, set up, install, enable, disable, modify, "
-            "or troubleshoot Hermes Agent itself — its CLI, config, models, providers, tools, "
-            "skills, voice, gateway, plugins, or any feature — load the `hermes-agent` skill "
-            "first. It has the actual commands (e.g. `hermes config set …`, `hermes tools`, "
-            "`hermes setup`) so you don't have to guess or invent workarounds.\n"
-            "If a skill has issues, fix it with skill_manage(action='patch').\n"
-            "After difficult/iterative tasks, offer to save as a skill. "
-            "If a skill you loaded was missing steps, had wrong commands, or needed "
-            "pitfalls you discovered, update it before finishing.\n"
+            "Before replying, inspect relevant skills: use skills_list(category=...) to discover "
+            "names, then skill_view(name) to load and follow a matching skill. Do this even when "
+            "a skill is only partly relevant; use skill_manage to fix a loaded skill if needed.\n"
             "\n"
             "<available_skills>\n"
             + "\n".join(index_lines) + "\n"
             "</available_skills>\n"
             "\n"
             "Only proceed without loading a skill if genuinely none are relevant to the task."
-            + hidden_note
         )
 
     # ── Store in LRU cache ────────────────────────────────────────────
