@@ -55,6 +55,25 @@ DELEGATE_BLOCKED_TOOLS = frozenset(
 )
 
 
+# Subagents run with `skip_context_files=True, skip_memory=True` (isolated,
+# fresh context by design), which means they never see the parent's
+# AGENTS.md/CLAUDE.md/memory-derived safety stance. If the goal/context text
+# suggests an irreversible or safety-sensitive action, a subagent reasoning
+# at the delegation default (often "medium") is more likely to act on an
+# ambiguous instruction than the main agent would with its fuller context.
+# This is a coarse, config-overridable keyword heuristic — not a hard block —
+# that only nudges the *thinking depth* knob higher; it never withholds a
+# tool or blocks execution.
+_DEFAULT_HIGH_RISK_KEYWORDS = frozenset(
+    [
+        "merge", "deploy", "production", "prod ", "delete", "drop table",
+        "force-push", "force push", "credential", "secret", "rollback",
+        "revert", "irreversible", "destructive", "rotate credential",
+        "stuck", "failed 3", "third attempt", "rm -rf",
+    ]
+)
+
+
 # ---------------------------------------------------------------------------
 # Subagent approval callbacks
 # ---------------------------------------------------------------------------
@@ -675,6 +694,13 @@ def _build_child_system_prompt(
     inspiration/openclaw/src/agents/subagent-system-prompt.ts:63-95).
     The depth note is literal truth (grounded in the passed config) so
     the LLM doesn't confabulate nesting capabilities that don't exist.
+
+    Subagents run with skip_context_files=True/skip_memory=True (isolated
+    context by design), so they never see the parent's AGENTS.md/CLAUDE.md
+    or memory-derived safety stance. A compact, generic safety-boundary
+    reminder is included unconditionally (not project-specific policy text)
+    so a child cannot mistake "no approval gate was mentioned" for "no
+    approval gate exists" on irreversible actions.
     """
     parts = [
         "You are a focused subagent working on a specific delegated task.",
@@ -701,7 +727,15 @@ def _build_child_system_prompt(
         "Keep your final summary tight: lead with outcomes, prefer bullet "
         "points over paragraphs, and don't replay your whole process. Your "
         "response is returned to the parent agent as a summary, and overlong "
-        "summaries crowd out the parent's context window."
+        "summaries crowd out the parent's context window.\n\n"
+        "SAFETY BOUNDARY (applies even though this task doesn't repeat it): "
+        "if completing this task would require a merge, deploy, delete, "
+        "credential/secret write, or another hard-to-reverse action beyond "
+        "what the task explicitly authorizes, stop short of that action and "
+        "report back what's needed instead of assuming silence means "
+        "approval. When you hit a repeated failure, stop and re-diagnose "
+        "from a clean state rather than trying a fourth variant of the same "
+        "patch."
     )
     if role == "orchestrator":
         child_note = (
@@ -735,6 +769,20 @@ def _build_child_system_prompt(
             f"is capped at max_spawn_depth={max_spawn_depth}. {child_note}"
         )
     return "\n".join(parts)
+
+
+def _is_high_risk_delegation_text(*texts: Optional[str]) -> bool:
+    """Return True when goal/context text suggests an irreversible/safety-sensitive task.
+
+    Coarse substring heuristic over DEFAULT_HIGH_RISK_KEYWORDS. False
+    positives just mean a subagent thinks a bit harder (higher
+    reasoning_effort); false negatives leave the existing default
+    behavior unchanged. Never used to withhold tools or block execution.
+    """
+    combined = " ".join(t for t in texts if t).lower()
+    if not combined:
+        return False
+    return any(keyword in combined for keyword in _DEFAULT_HIGH_RISK_KEYWORDS)
 
 
 def _resolve_workspace_hint(parent_agent) -> Optional[str]:
@@ -1316,6 +1364,48 @@ def _build_child_agent(
                 )
     except Exception as exc:
         logger.debug("Could not load delegation reasoning_effort: %s", exc)
+
+    # Escalate thinking depth for safety-sensitive delegated work.
+    #
+    # Subagents run isolated (skip_context_files/skip_memory), so they never
+    # see the parent's project safety stance (approval boundaries on
+    # merge/deploy/delete, stuck-loop revert-and-reassess policy, etc.). The
+    # 2026-07-21 model-bench audit found that at the delegation default
+    # reasoning effort, judged harness/gate scenarios (irreversible-action
+    # gating, stuck-loop recovery) scored measurably worse than the same
+    # scenarios at a higher effort — not a model-capability gap, a thinking-
+    # depth gap. Bump one step (e.g. medium -> high) only when the goal/
+    # context text itself signals that kind of risk; this never lowers an
+    # explicit delegation.reasoning_effort override and never raises above
+    # "high" from here (xhigh/max stay an explicit opt-in).
+    _RISK_ESCALATION_STEP = {
+        None: "high",
+        "low": "medium",
+        "medium": "high",
+        "high": "high",
+    }
+    try:
+        if (
+            not delegation_cfg.get("reasoning_effort")
+            and _is_high_risk_delegation_text(goal, context)
+        ):
+            from hermes_constants import parse_reasoning_effort
+
+            current_effort = (
+                child_reasoning.get("effort") if isinstance(child_reasoning, dict) else None
+            )
+            escalated_effort = _RISK_ESCALATION_STEP.get(current_effort)
+            if escalated_effort and escalated_effort != current_effort:
+                escalated = parse_reasoning_effort(escalated_effort)
+                if escalated is not None:
+                    logger.info(
+                        "delegate_task: escalating reasoning_effort %s -> %s "
+                        "for safety-sensitive goal text",
+                        current_effort, escalated_effort,
+                    )
+                    child_reasoning = escalated
+    except Exception as exc:
+        logger.debug("Could not apply risk-based reasoning escalation: %s", exc)
 
     # Inherit the parent's fallback provider chain so subagents can recover
     # from rate-limits and credential exhaustion exactly like the top-level

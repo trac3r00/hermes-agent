@@ -30,6 +30,7 @@ from tools.delegate_tool import (
     _build_child_agent,
     _build_child_progress_callback,
     _build_child_system_prompt,
+    _is_high_risk_delegation_text,
     _extract_output_tail,
     _strip_blocked_tools,
     _resolve_child_credential_pool,
@@ -154,6 +155,36 @@ class TestChildSystemPrompt(unittest.TestCase):
     def test_empty_context_ignored(self):
         prompt = _build_child_system_prompt("Do something", "  ")
         self.assertNotIn("CONTEXT", prompt)
+
+    def test_safety_boundary_always_present(self):
+        """Regression: subagents run with skip_context_files/skip_memory,
+        so they never see the parent's AGENTS.md/BOB.md-style safety
+        stance. The generic safety-boundary reminder must be present on
+        every child prompt regardless of task content, so a subagent
+        can't mistake "not mentioned" for "not required"."""
+        prompt = _build_child_system_prompt("Update the changelog")
+        self.assertIn("SAFETY BOUNDARY", prompt)
+        self.assertIn("merge", prompt.lower())
+        self.assertIn("deploy", prompt.lower())
+        self.assertIn("credential", prompt.lower())
+
+
+class TestHighRiskDelegationText(unittest.TestCase):
+    def test_flags_merge_deploy_language(self):
+        self.assertTrue(_is_high_risk_delegation_text("merge this PR and deploy to prod"))
+
+    def test_flags_stuck_loop_language(self):
+        self.assertTrue(_is_high_risk_delegation_text("the third attempt at this patch also failed"))
+
+    def test_ignores_benign_goal(self):
+        self.assertFalse(_is_high_risk_delegation_text("Summarize this README file"))
+
+    def test_checks_context_too(self):
+        self.assertTrue(_is_high_risk_delegation_text("Fix the bug", "this also triggers a production deploy"))
+
+    def test_handles_none_and_empty(self):
+        self.assertFalse(_is_high_risk_delegation_text(None, ""))
+        self.assertFalse(_is_high_risk_delegation_text())
 
 
 class TestStripBlockedTools(unittest.TestCase):
@@ -2375,6 +2406,107 @@ class TestDelegationReasoningEffort(unittest.TestCase):
         )
         call_kwargs = MockAgent.call_args[1]
         self.assertEqual(call_kwargs["reasoning_config"], {"enabled": True, "effort": "medium"})
+
+    @patch("tools.delegate_tool._load_config")
+    @patch("run_agent.AIAgent")
+    def test_high_risk_goal_escalates_medium_to_high(self, MockAgent, mock_cfg):
+        """Regression for the 2026-07-21 model-bench audit: subagents run
+        isolated from the parent's project safety stance, and at 'medium'
+        effort judged harness/gate scenarios (irreversible-action gating,
+        stuck-loop recovery) scored measurably worse. A goal that reads as
+        safety-sensitive should escalate effort one step."""
+        mock_cfg.return_value = {"max_iterations": 50, "reasoning_effort": ""}
+        MockAgent.return_value = MagicMock()
+        parent = _make_mock_parent()
+        parent.reasoning_config = {"enabled": True, "effort": "medium"}
+
+        _build_child_agent(
+            task_index=0,
+            goal="Merge this PR, it also triggers a production deploy",
+            context=None, toolsets=None,
+            model=None, max_iterations=50, parent_agent=parent,
+            task_count=1,
+        )
+        call_kwargs = MockAgent.call_args[1]
+        self.assertEqual(call_kwargs["reasoning_config"], {"enabled": True, "effort": "high"})
+
+    @patch("tools.delegate_tool._load_config")
+    @patch("run_agent.AIAgent")
+    def test_high_risk_context_also_escalates(self, MockAgent, mock_cfg):
+        """The risk check looks at goal AND context text."""
+        mock_cfg.return_value = {"max_iterations": 50, "reasoning_effort": ""}
+        MockAgent.return_value = MagicMock()
+        parent = _make_mock_parent()
+        parent.reasoning_config = {"enabled": True, "effort": "medium"}
+
+        _build_child_agent(
+            task_index=0,
+            goal="Investigate the failing build",
+            context="Note: fixing this requires a rollback of a production credential.",
+            toolsets=None,
+            model=None, max_iterations=50, parent_agent=parent,
+            task_count=1,
+        )
+        call_kwargs = MockAgent.call_args[1]
+        self.assertEqual(call_kwargs["reasoning_config"], {"enabled": True, "effort": "high"})
+
+    @patch("tools.delegate_tool._load_config")
+    @patch("run_agent.AIAgent")
+    def test_benign_goal_does_not_escalate(self, MockAgent, mock_cfg):
+        """A goal with no risk keywords keeps the parent's effort unchanged."""
+        mock_cfg.return_value = {"max_iterations": 50, "reasoning_effort": ""}
+        MockAgent.return_value = MagicMock()
+        parent = _make_mock_parent()
+        parent.reasoning_config = {"enabled": True, "effort": "medium"}
+
+        _build_child_agent(
+            task_index=0, goal="Summarize the README",
+            context=None, toolsets=None,
+            model=None, max_iterations=50, parent_agent=parent,
+            task_count=1,
+        )
+        call_kwargs = MockAgent.call_args[1]
+        self.assertEqual(call_kwargs["reasoning_config"], {"enabled": True, "effort": "medium"})
+
+    @patch("tools.delegate_tool._load_config")
+    @patch("run_agent.AIAgent")
+    def test_explicit_delegation_override_wins_over_escalation(self, MockAgent, mock_cfg):
+        """An explicit delegation.reasoning_effort config value is a
+        deliberate operator choice and must not be silently overridden by
+        the risk heuristic, even for a high-risk-sounding goal."""
+        mock_cfg.return_value = {"max_iterations": 50, "reasoning_effort": "low"}
+        MockAgent.return_value = MagicMock()
+        parent = _make_mock_parent()
+        parent.reasoning_config = {"enabled": True, "effort": "medium"}
+
+        _build_child_agent(
+            task_index=0,
+            goal="Merge this PR and deploy to production",
+            context=None, toolsets=None,
+            model=None, max_iterations=50, parent_agent=parent,
+            task_count=1,
+        )
+        call_kwargs = MockAgent.call_args[1]
+        self.assertEqual(call_kwargs["reasoning_config"], {"enabled": True, "effort": "low"})
+
+    @patch("tools.delegate_tool._load_config")
+    @patch("run_agent.AIAgent")
+    def test_high_risk_already_at_high_stays_high(self, MockAgent, mock_cfg):
+        """Escalation never raises above 'high' implicitly."""
+        mock_cfg.return_value = {"max_iterations": 50, "reasoning_effort": ""}
+        MockAgent.return_value = MagicMock()
+        parent = _make_mock_parent()
+        parent.reasoning_config = {"enabled": True, "effort": "high"}
+
+        _build_child_agent(
+            task_index=0,
+            goal="Merge this PR and deploy to production",
+            context=None, toolsets=None,
+            model=None, max_iterations=50, parent_agent=parent,
+            task_count=1,
+        )
+        call_kwargs = MockAgent.call_args[1]
+        self.assertEqual(call_kwargs["reasoning_config"], {"enabled": True, "effort": "high"})
 
 
 # =========================================================================
