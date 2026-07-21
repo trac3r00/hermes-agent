@@ -1,0 +1,3 @@
+name: qdrant
+version: 0.1.0
+description: "Qdrant — semantic long-term memory via a LAN Qdrant MCP REST bridge (qdrant_upsert/qdrant_search/qdrant_delete). Previously deployed only as an untracked file at ~/.hermes/plugins/qdrant/__init__.py; imported here to bring it under version control (kanban t_b47bd68e)."
