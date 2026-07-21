@@ -22,6 +22,8 @@ from tools.checkpoint_manager import (
     _ref_name,
     _project_meta_path,
     _touch_project,
+    _git_add_recover_stale_index_lock,
+    _remove_stale_index_lock,
     format_checkpoint_list,
     prune_checkpoints,
     maybe_auto_prune_checkpoints,
@@ -227,6 +229,64 @@ class TestTakeCheckpoint:
         assert (BASE / "store" / "HEAD").exists()
         assert (BASE / "store" / "projects" / f"{_project_hash(str(a))}.json").exists()
         assert (BASE / "store" / "projects" / f"{_project_hash(str(b))}.json").exists()
+
+
+class TestCheckpointIndexLocks:
+    def test_recovers_only_matching_stale_index_lock_error(self, tmp_path, monkeypatch):
+        work_dir = tmp_path / "project"
+        work_dir.mkdir()
+        index_file = tmp_path / "store" / "indexes" / ("a" * 16)
+        lock_path = index_file.with_name(index_file.name + ".lock")
+        calls = []
+        def fake_run_git(args, *unused_args, **unused_kwargs):
+            calls.append(args)
+            if len(calls) == 1:
+                return False, "", f"fatal: Unable to create '{lock_path}': File exists."
+            return True, "", ""
+
+        monkeypatch.setattr("tools.checkpoint_manager._run_git", fake_run_git)
+        monkeypatch.setattr("tools.checkpoint_manager._remove_stale_index_lock", lambda _: True)
+
+        assert _git_add_recover_stale_index_lock(tmp_path / "store", str(work_dir), index_file) == (True, "", "")
+        assert calls == [["add", "-A"], ["add", "-A"]]
+
+        calls.clear()
+        def unrelated_run_git(*args, **kwargs):
+            calls.append(args)
+            return False, "", "fatal: unrelated git failure"
+
+        monkeypatch.setattr("tools.checkpoint_manager._run_git", unrelated_run_git)
+        assert _git_add_recover_stale_index_lock(tmp_path / "store", str(work_dir), index_file) == (
+            False,
+            "",
+            "fatal: unrelated git failure",
+        )
+        assert len(calls) == 1
+
+    def test_removes_old_unheld_project_index_lock(self, mgr, work_dir, checkpoint_base, monkeypatch):
+        store = _store_path(checkpoint_base)
+        assert _init_store(store, str(work_dir)) is None
+        index_file = store / "indexes" / _project_hash(str(work_dir))
+        lock_path = index_file.with_name(index_file.name + ".lock")
+        lock_path.write_text("")
+        old = time.time() - 301
+        os.utime(lock_path, (old, old))
+
+        monkeypatch.setattr("tools.checkpoint_manager._index_lock_has_open_process", lambda path: False)
+        monkeypatch.setattr("tools.checkpoint_manager.time.sleep", lambda _: None)
+
+        assert mgr.ensure_checkpoint(str(work_dir), "recover stale lock") is True
+        assert not lock_path.exists()
+
+    def test_keeps_recent_or_open_index_locks(self, tmp_path, monkeypatch):
+        index_file = tmp_path / "store" / "indexes" / ("b" * 16)
+        index_file.parent.mkdir(parents=True)
+        lock_path = index_file.with_name(index_file.name + ".lock")
+        lock_path.write_text("")
+        monkeypatch.setattr("tools.checkpoint_manager._index_lock_has_open_process", lambda path: True)
+
+        assert _remove_stale_index_lock(index_file) is False
+        assert lock_path.exists()
 
 
 # =========================================================================
