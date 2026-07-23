@@ -112,6 +112,23 @@ class TestParseJudgeResponse:
         assert parse_failed is False
         assert wait is None
 
+    @pytest.mark.parametrize(
+        ("raw", "expected_reason"),
+        [
+            ("```\ndone\n```", "no reason provided"),
+            ("```\nVerdict: done\nReason: completion evidence is recorded.\n```", "completion evidence is recorded."),
+        ],
+    )
+    def test_fenced_text_verdict(self, raw, expected_reason):
+        from hermes_cli.goals import _parse_judge_response
+
+        verdict, reason, parse_failed, wait = _parse_judge_response(raw)
+
+        assert verdict == "done"
+        assert reason == expected_reason
+        assert parse_failed is False
+        assert wait is None
+
     def test_plain_text_continue_verdict(self):
         from hermes_cli.goals import _parse_judge_response
 

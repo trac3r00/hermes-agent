@@ -726,6 +726,7 @@ def _parse_judge_response(raw: str) -> Tuple[str, str, bool, Optional[Dict[str, 
         nl = text.find("\n")
         if nl != -1:
             text = text[nl + 1:]
+        text = text.strip()
 
     text_verdict = _TEXT_VERDICT_RE.fullmatch(text)
     if text_verdict:
