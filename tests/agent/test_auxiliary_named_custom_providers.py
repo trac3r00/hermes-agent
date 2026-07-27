@@ -1,6 +1,7 @@
 """Tests for named custom provider and 'main' alias resolution in auxiliary_client."""
 
 from unittest.mock import patch, MagicMock
+from pathlib import Path
 
 import pytest
 
@@ -149,17 +150,65 @@ class TestResolveProviderClientNamedCustom:
         # Should use _read_main_model() fallback
         assert model == "main-model"
 
-    def test_named_custom_no_api_key_uses_fallback(self, tmp_path):
+    def test_named_local_custom_no_api_key_uses_placeholder(self, tmp_path: Path):
         _write_config(tmp_path, {
             "model": {"default": "test"},
             "custom_providers": [
                 {"name": "local", "base_url": "http://localhost:8080/v1"},
             ],
         })
-        from agent.auxiliary_client import resolve_provider_client
-        client, model = resolve_provider_client("local", "test")
-        assert client is not None
-        # no-key-required should be used
+        from agent import auxiliary_client
+        created = MagicMock()
+        with patch.object(auxiliary_client, "_create_openai_client", return_value=created) as create:
+            client, model = auxiliary_client.resolve_provider_client("local", "test")
+        assert client is created
+        assert model == "test"
+        assert create.call_args.kwargs["api_key"] == "no-key-required"
+
+    def test_stale_loopback_llm_pool_without_key_is_rejected_before_client_creation(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture,
+    ):
+        _write_config(tmp_path, {
+            "model": {"default": "test"},
+            "custom_providers": [
+                {
+                    "name": "llm-pool-chat",
+                    "base_url": "http://127.0.0.1:18989/v1",
+                },
+            ],
+        })
+        from agent import auxiliary_client
+        with patch.object(auxiliary_client, "_create_openai_client") as create:
+            client, model = auxiliary_client.resolve_provider_client(
+                "custom:llm-pool-chat", "test",
+            )
+        assert client is None
+        assert model is None
+        create.assert_not_called()
+        assert "provider_resolution_failed" in caplog.text
+        assert "code=missing_api_key" in caplog.text
+        assert "llm-pool-chat" in caplog.text
+
+    def test_keyed_loopback_llm_pool_is_created(self, tmp_path: Path):
+        _write_config(tmp_path, {
+            "model": {"default": "test"},
+            "custom_providers": [
+                {
+                    "name": "llm-pool-chat",
+                    "base_url": "http://127.0.0.1:18989/v1",
+                    "api_key": "pool-key",
+                },
+            ],
+        })
+        from agent import auxiliary_client
+        created = MagicMock()
+        with patch.object(auxiliary_client, "_create_openai_client", return_value=created) as create:
+            client, model = auxiliary_client.resolve_provider_client(
+                "custom:llm-pool-chat", "test",
+            )
+        assert client is created
+        assert model == "test"
+        assert create.call_args.kwargs["api_key"] == "pool-key"
 
     def test_nonexistent_named_custom_falls_through(self, tmp_path):
         _write_config(tmp_path, {
