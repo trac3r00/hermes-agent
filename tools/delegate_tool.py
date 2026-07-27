@@ -2291,6 +2291,10 @@ def _run_single_child(
                 for p in paths
             }
         )[:40]
+        # These are observed by the shared file-state registry, unlike paths
+        # merely narrated in a child summary. The aggregator validates their
+        # existence before exposing them as verification evidence.
+        entry["artifacts"] = _files_written
 
         _output_tail = _extract_output_tail(result, max_entries=8, max_chars=600)
 
@@ -2427,6 +2431,56 @@ def _recover_tasks_from_json_string(
             f"{type(parsed).__name__} instead."
         )
     return parsed, None
+
+
+def _annotate_delegation_evidence(
+    results: List[Dict[str, Any]], workdir: str
+) -> None:
+    """Fail closed when a child result lacks locally checkable evidence.
+
+    Child prose is intentionally not evidence. We only inspect artifact paths
+    already present in result metadata, never commands or claims from a child
+    summary, and only accept existing paths rooted in the parent's workdir.
+    """
+    allowed_root = os.path.realpath(os.path.abspath(workdir))
+    for entry in results:
+        status = entry.get("status")
+        if status not in {"completed", "applied_unverified"}:
+            entry["verification"] = {
+                "status": "not_applicable",
+                "evidence": [],
+                "invalid_artifact_paths": [],
+            }
+            continue
+
+        evidence = []
+        invalid_paths = []
+        artifacts = entry.get("artifacts", [])
+        if not isinstance(artifacts, (list, tuple)):
+            artifacts = []
+        for artifact in artifacts:
+            if not isinstance(artifact, str) or not artifact:
+                invalid_paths.append(artifact)
+                continue
+            candidate = artifact if os.path.isabs(artifact) else os.path.join(allowed_root, artifact)
+            resolved = os.path.realpath(os.path.abspath(candidate))
+            try:
+                within_root = os.path.commonpath([allowed_root, resolved]) == allowed_root
+            except ValueError:
+                within_root = False
+            if not within_root or not os.path.exists(resolved):
+                invalid_paths.append(artifact)
+                continue
+            evidence.append({"type": "artifact_exists", "path": artifact})
+
+        verification_status = "verified" if evidence and not invalid_paths else "unverified"
+        entry["verification"] = {
+            "status": verification_status,
+            "evidence": evidence,
+            "invalid_artifact_paths": invalid_paths,
+        }
+        if verification_status != "verified":
+            entry["status"] = "applied_unverified"
 
 
 def delegate_task(
@@ -2780,6 +2834,11 @@ def delegate_task(
 
             # Sort by task_index so results match input order
             results.sort(key=lambda r: r["task_index"])
+
+        # Evidence is annotated exactly once on the consolidated result set so
+        # synchronous, background, and batch returns share the same contract.
+        # Do this before serialisation; summaries themselves remain untouched.
+        _annotate_delegation_evidence(results, os.getcwd())
 
         # Cap subagent summaries against the parent's remaining context
         # headroom (split across the batch) before they enter the parent's

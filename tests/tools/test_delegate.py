@@ -35,6 +35,7 @@ from tools.delegate_tool import (
     _resolve_child_credential_pool,
     _resolve_delegation_credentials,
     _inherit_parent_base_url,
+    _annotate_delegation_evidence,
 )
 
 
@@ -293,6 +294,49 @@ class TestStripBlockedTools(unittest.TestCase):
         )
 
 
+class TestDelegationEvidenceGate(unittest.TestCase):
+    def test_narrative_only_success_is_applied_unverified(self):
+        entry = {"status": "completed", "summary": "Implemented the feature.", "tool_trace": []}
+
+        _annotate_delegation_evidence([entry], os.getcwd())
+
+        self.assertEqual(entry["status"], "applied_unverified")
+        self.assertEqual(entry["verification"]["status"], "unverified")
+        self.assertEqual(entry["verification"]["evidence"], [])
+        self.assertEqual(entry["summary"], "Implemented the feature.")
+
+    def test_existing_artifact_under_workdir_is_verified(self):
+        artifact = os.path.join(os.getcwd(), "tools", "delegate_tool.py")
+        entry = {"status": "completed", "summary": "Changed code.", "artifacts": [artifact]}
+
+        _annotate_delegation_evidence([entry], os.getcwd())
+
+        self.assertEqual(entry["status"], "completed")
+        self.assertEqual(entry["verification"]["status"], "verified")
+        self.assertEqual(entry["verification"]["evidence"], [{"type": "artifact_exists", "path": artifact}])
+
+    def test_invalid_artifact_path_is_detected_and_fails_closed(self):
+        entry = {"status": "completed", "summary": "Changed code.", "artifacts": ["/etc/passwd"]}
+
+        _annotate_delegation_evidence([entry], os.getcwd())
+
+        self.assertEqual(entry["status"], "applied_unverified")
+        self.assertEqual(entry["verification"]["status"], "unverified")
+        self.assertEqual(entry["verification"]["invalid_artifact_paths"], ["/etc/passwd"])
+
+    def test_failed_and_interrupted_entries_keep_terminal_status(self):
+        entries = [
+            {"status": "failed", "summary": None},
+            {"status": "interrupted", "summary": None},
+        ]
+
+        _annotate_delegation_evidence(entries, os.getcwd())
+
+        for entry, status in zip(entries, ("failed", "interrupted")):
+            self.assertEqual(entry["status"], status)
+            self.assertEqual(entry["verification"]["status"], "not_applicable")
+
+
 class TestDelegateTask(unittest.TestCase):
     def test_no_parent_agent(self):
         result = json.loads(delegate_task(goal="test"))
@@ -330,7 +374,8 @@ class TestDelegateTask(unittest.TestCase):
         result = json.loads(delegate_task(goal="Fix tests", context="error log...", parent_agent=parent))
         self.assertIn("results", result)
         self.assertEqual(len(result["results"]), 1)
-        self.assertEqual(result["results"][0]["status"], "completed")
+        self.assertEqual(result["results"][0]["status"], "applied_unverified")
+        self.assertEqual(result["results"][0]["verification"]["status"], "unverified")
         self.assertEqual(result["results"][0]["summary"], "Done!")
         mock_run.assert_called_once()
 
@@ -348,6 +393,14 @@ class TestDelegateTask(unittest.TestCase):
         result = json.loads(delegate_task(tasks=tasks, parent_agent=parent))
         self.assertIn("results", result)
         self.assertEqual(len(result["results"]), 2)
+        self.assertEqual(
+            [entry["status"] for entry in result["results"]],
+            ["applied_unverified", "applied_unverified"],
+        )
+        self.assertEqual(
+            [entry["verification"]["status"] for entry in result["results"]],
+            ["unverified", "unverified"],
+        )
         self.assertEqual(result["results"][0]["summary"], "Result A")
         self.assertEqual(result["results"][1]["summary"], "Result B")
         self.assertIn("total_duration_seconds", result)

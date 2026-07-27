@@ -309,6 +309,98 @@ def wrap_progress_callback(inner_cb, writer: LiveTranscriptWriter):
 
 # ── dispatch-time helpers ────────────────────────────────────────────────
 
+_ARTIFACT_LOCK = threading.Lock()
+
+
+def _run_dir(delegation_id: str) -> Path:
+    return live_transcript_root() / delegation_id
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Replace a small run artifact atomically where the filesystem permits it."""
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(text, encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+def _task_artifact(task: Dict[str, Any], index: int, status: str = "running",
+                   default_context: Optional[str] = None) -> Dict[str, Any]:
+    """The redacted, stable task shape shared by goals and ledger artifacts."""
+    return {
+        "index": index,
+        "goal": _redact(str(task.get("goal", ""))[:500]),
+        "context": _redact(str(task.get("context") or default_context or "")[:500]),
+        "status": status,
+    }
+
+
+def _append_ledger_event(delegation_id: str, event: Dict[str, Any]) -> None:
+    """Append one redacted state transition; failure is never operationally fatal."""
+    try:
+        path = _run_dir(delegation_id) / "ledger.jsonl"
+        line = json.dumps(event, ensure_ascii=False) + "\n"
+        with _ARTIFACT_LOCK:
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write(line)
+    except Exception as exc:
+        logger.debug("Delegation ledger append failed: %s", exc)
+
+
+def _write_durable_run_artifacts(delegation_id: str, task_list: List[Dict[str, Any]],
+                                 context: Optional[str] = None) -> None:
+    """Create redacted durable run state beside the live logs, best-effort."""
+    tasks = [
+        _task_artifact(task, index, default_context=context)
+        for index, task in enumerate(task_list)
+    ]
+    started = time.strftime("%Y-%m-%d %H:%M:%S")
+    brief_lines = [
+        "# Delegation brief",
+        "",
+        f"- Delegation: {delegation_id}",
+        f"- Started: {started}",
+        "",
+        "## Tasks",
+    ]
+    for task in tasks:
+        brief_lines.extend([
+            "",
+            f"### Task {task['index']} ({task['status']})",
+            task["goal"],
+        ])
+        if task["context"]:
+            brief_lines.append(f"Context: {task['context']}")
+
+    artifacts = {
+        "brief.md": "\n".join(brief_lines) + "\n",
+        "goals.json": json.dumps(
+            {"delegation_id": delegation_id, "started": started, "tasks": tasks},
+            indent=2,
+            ensure_ascii=False,
+        ),
+    }
+    for name, text in artifacts.items():
+        try:
+            _atomic_write_text(_run_dir(delegation_id) / name, text)
+        except Exception as exc:
+            logger.debug("Delegation %s write failed: %s", name, exc)
+    for task in tasks:
+        _append_ledger_event(delegation_id, {
+            "event": "created",
+            "at": started,
+            "task_index": task["index"],
+            "goal": task["goal"],
+            "context": task["context"],
+            "status": task["status"],
+        })
+
+
 def create_live_transcripts(
     task_list: List[Dict[str, Any]],
     context: Optional[str] = None,
@@ -340,6 +432,7 @@ def create_live_transcripts(
         if not paths:
             return None, [None] * n, []
         _write_manifest(deleg_id, task_list, paths)
+        _write_durable_run_artifacts(deleg_id, task_list, context=context)
         return deleg_id, writers, paths
     except Exception as exc:
         logger.debug("Live transcript creation failed: %s", exc)
@@ -394,6 +487,14 @@ def update_manifest_statuses(delegation_id: Optional[str],
                 task["status"] = r.get("status", task.get("status"))
                 if r.get("exit_reason"):
                     task["exit_reason"] = r["exit_reason"]
+                _append_ledger_event(delegation_id, {
+                    "event": "status_updated",
+                    "at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "task_index": task.get("index"),
+                    "status": task.get("status"),
+                    **({"exit_reason": _redact(str(r["exit_reason"]))}
+                       if r.get("exit_reason") else {}),
+                })
         manifest["completed"] = time.strftime("%Y-%m-%d %H:%M:%S")
         mp.write_text(json.dumps(manifest, indent=2, ensure_ascii=False),
                       encoding="utf-8")

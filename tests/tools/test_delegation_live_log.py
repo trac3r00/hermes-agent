@@ -334,7 +334,7 @@ def test_delegate_task_sync_result_includes_live_transcripts(monkeypatch):
     assert "sync goal" in p.read_text(encoding="utf-8")
     # Per-task entries carry their own path + a terminal marker was written.
     assert out["results"][0]["live_transcript"] == str(p)
-    assert "end status=completed" in p.read_text(encoding="utf-8")
+    assert "end status=applied_unverified" in p.read_text(encoding="utf-8")
 
 
 def test_delegate_task_background_dispatch_includes_live_transcripts(monkeypatch):
@@ -474,7 +474,7 @@ def test_delegate_task_proceeds_when_transcripts_unavailable(monkeypatch):
     )
 
     out = json.loads(dt.delegate_task(goal="resilient", parent_agent=parent))
-    assert out["results"][0]["status"] == "completed"
+    assert out["results"][0]["status"] == "applied_unverified"
     assert "live_transcripts" not in out
 
 
@@ -609,3 +609,67 @@ def test_benign_transcript_content_is_untouched():
     assert "src/parser.py" in body
     assert "def parse(x)" in body
     assert "refactor the parser" in body
+
+
+def test_create_live_transcripts_writes_redacted_durable_run_artifacts(monkeypatch, tmp_path):
+    monkeypatch.setattr(dll, "live_transcript_root", lambda: tmp_path / "live")
+    deleg_id, _writers, _paths = create_live_transcripts(
+        [{"goal": f"deploy using {_ENV_KEY}", "context": f"token {_BEARER}"}],
+        delegation_id="deleg_durable",
+    )
+
+    directory = tmp_path / "live" / deleg_id
+    brief = (directory / "brief.md").read_text(encoding="utf-8")
+    goals = json.loads((directory / "goals.json").read_text(encoding="utf-8"))
+    ledger = [json.loads(line) for line in (directory / "ledger.jsonl").read_text(encoding="utf-8").splitlines()]
+
+    assert {"manifest.json", "brief.md", "goals.json", "ledger.jsonl"} <= {
+        path.name for path in directory.iterdir()
+    }
+    assert "deploy using" in brief and _ENV_KEY not in brief and _BEARER not in brief
+    assert goals["tasks"] == [{
+        "index": 0,
+        "goal": goals["tasks"][0]["goal"],
+        "context": goals["tasks"][0]["context"],
+        "status": "running",
+    }]
+    assert "deploy using" in goals["tasks"][0]["goal"]
+    assert _ENV_KEY not in json.dumps(goals) and _BEARER not in json.dumps(goals)
+    assert ledger[0]["task_index"] == 0
+    assert ledger[0]["status"] == "running"
+    assert ledger[0]["context"] == goals["tasks"][0]["context"]
+
+
+def test_shared_context_is_preserved_in_durable_artifacts(monkeypatch, tmp_path):
+    monkeypatch.setattr(dll, "live_transcript_root", lambda: tmp_path / "live")
+    deleg_id, _writers, _paths = create_live_transcripts(
+        [{"goal": "first"}], context=f"shared {_ENV_KEY}", delegation_id="deleg_context"
+    )
+
+    directory = tmp_path / "live" / deleg_id
+    goals = json.loads((directory / "goals.json").read_text(encoding="utf-8"))
+    ledger = [json.loads(line) for line in (directory / "ledger.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert "shared" in goals["tasks"][0]["context"]
+    assert _ENV_KEY not in (directory / "brief.md").read_text(encoding="utf-8")
+    assert _ENV_KEY not in json.dumps(goals)
+    assert ledger[0]["context"] == goals["tasks"][0]["context"]
+
+
+def test_update_manifest_statuses_appends_durable_ledger_events(monkeypatch, tmp_path):
+    monkeypatch.setattr(dll, "live_transcript_root", lambda: tmp_path / "live")
+    deleg_id, _writers, _paths = create_live_transcripts(
+        [{"goal": "first", "context": "context"}], delegation_id="deleg_ledger"
+    )
+    ledger_path = tmp_path / "live" / deleg_id / "ledger.jsonl"
+    before = ledger_path.read_text(encoding="utf-8").splitlines()
+
+    update_manifest_statuses(deleg_id, [{
+        "task_index": 0, "status": "completed", "exit_reason": "completed"
+    }])
+
+    after = ledger_path.read_text(encoding="utf-8").splitlines()
+    assert after[:len(before)] == before
+    event = json.loads(after[-1])
+    assert event["task_index"] == 0
+    assert event["status"] == "completed"
+    assert event["exit_reason"] == "completed"

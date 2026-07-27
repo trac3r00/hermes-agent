@@ -5794,6 +5794,13 @@ def run_conversation(
 
                 if agent._tool_guardrail_halt_decision is not None:
                     decision = agent._tool_guardrail_halt_decision
+                    if decision.action == "block":
+                        agent._emit_status(
+                            f"⚠️ Tool guardrail blocked repeated {decision.tool_name} call; "
+                            "asking the model to change strategy"
+                        )
+                        agent._tool_guardrail_halt_decision = None
+                        continue
                     _turn_exit_reason = "guardrail_halt"
                     final_response = agent._toolguard_controlled_halt_response(decision)
                     agent._emit_status(

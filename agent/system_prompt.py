@@ -146,6 +146,44 @@ def _tui_embedded_pane_clarifier(hint: str) -> str:
     return hint + _TUI_EMBEDDED_PANE_CLARIFIER
 
 
+def _configured_model_guidance(agent: Any) -> List[str]:
+    """Return stable common + best-matching model guidance from config.
+
+    ``agent.model_guidance`` is intentionally a compact configuration seam,
+    not another prompt framework.  It lets operators compensate for different
+    model personalities without copying SOUL.md or the full global harness into
+    every role.  Resolution happens once per agent, before prompt caching.
+    """
+    raw = getattr(agent, "_model_guidance", None)
+    if not isinstance(raw, dict):
+        return []
+
+    blocks: List[str] = []
+    common = raw.get("common")
+    if isinstance(common, str) and common.strip():
+        blocks.append(common.strip())
+
+    models = raw.get("models")
+    if not isinstance(models, dict):
+        return blocks
+    model_id = str(getattr(agent, "model", "") or "").casefold()
+    matches = [
+        (str(pattern), text)
+        for pattern, text in models.items()
+        if str(pattern).strip().casefold() in model_id
+        and isinstance(text, str)
+        and text.strip()
+    ]
+    if matches:
+        _, text = max(matches, key=lambda item: len(item[0]))
+        blocks.append(text.strip())
+    else:
+        default = raw.get("default")
+        if isinstance(default, str) and default.strip():
+            blocks.append(default.strip())
+    return blocks
+
+
 def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) -> Dict[str, str]:
     """Assemble the system prompt as three ordered cache tiers.
 
@@ -196,6 +234,11 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     if not _soul_loaded:
         # Fallback to hardcoded identity
         stable_parts.append(DEFAULT_AGENT_IDENTITY)
+
+    # Compact role/personality adapter.  Keep it next to identity and before
+    # generic tool guidance so the model knows which stance it owns without
+    # duplicating the rest of the system prompt.
+    stable_parts.extend(_configured_model_guidance(agent))
 
     # Pointer to the hermes-agent skill + docs for user questions about Hermes itself.
     stable_parts.append(HERMES_AGENT_HELP_GUIDANCE)

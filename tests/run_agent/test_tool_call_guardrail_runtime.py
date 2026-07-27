@@ -268,8 +268,8 @@ def test_default_run_conversation_warns_without_guardrail_halt():
     assert any("repeated_exact_failure_warning" in content for content in tool_contents)
 
 
-def test_config_enabled_hard_stop_run_conversation_returns_controlled_guardrail_halt_without_top_level_error():
-    agent = _make_agent("web_search", max_iterations=10, config=_hard_stop_config())
+def test_config_enabled_exact_failure_block_steers_model_to_different_tool_call():
+    agent = _make_agent("web_search", "terminal", max_iterations=10, config=_hard_stop_config())
     same_args = {"query": "same"}
     responses = [
         _mock_response(
@@ -277,27 +277,49 @@ def test_config_enabled_hard_stop_run_conversation_returns_controlled_guardrail_
             finish_reason="tool_calls",
             tool_calls=[_mock_tool_call("web_search", json.dumps(same_args), f"c{i}")],
         )
-        for i in range(1, 10)
+        for i in range(1, 4)
     ]
+    responses.extend([
+        _mock_response(
+            content="",
+            finish_reason="tool_calls",
+            tool_calls=[_mock_tool_call("terminal", json.dumps({"command": "pwd"}), "changed")],
+        ),
+        _mock_response(content="recovered", finish_reason="stop", tool_calls=None),
+    ])
     agent.client.chat.completions.create.side_effect = responses
 
+    executed = []
+
+    def handle_call(name, args, *_args, **_kwargs):
+        executed.append((name, args))
+        if name == "web_search":
+            return json.dumps({"error": "boom"})
+        return json.dumps({"exit_code": 0, "output": "/tmp"})
+
     with (
-        patch("run_agent.handle_function_call", return_value=json.dumps({"error": "boom"})) as mock_hfc,
+        patch("run_agent.handle_function_call", side_effect=handle_call),
         patch.object(agent, "_persist_session"),
         patch.object(agent, "_save_trajectory"),
         patch.object(agent, "_cleanup_task_resources"),
     ):
         result = agent.run_conversation("search repeatedly")
 
-    assert mock_hfc.call_count == 2
-    assert result["api_calls"] == 3
-    assert result["api_calls"] < agent.max_iterations
-    assert result["turn_exit_reason"] == "guardrail_halt"
-    assert "error" not in result
+    assert executed == [
+        ("web_search", same_args),
+        ("web_search", same_args),
+        ("terminal", {"command": "pwd"}),
+    ]
+    assert result["api_calls"] == 5
+    assert result["turn_exit_reason"].startswith("text_response")
     assert result["completed"] is True
-    assert "stopped retrying" in result["final_response"]
-    assert result["guardrail"]["code"] == "repeated_exact_failure_block"
-    assert result["guardrail"]["tool_name"] == "web_search"
+    assert result["final_response"] == "recovered"
+    assert "guardrail" not in result
+    blocked_results = [
+        m for m in result["messages"]
+        if m.get("role") == "tool" and "repeated_exact_failure_block" in m.get("content", "")
+    ]
+    assert len(blocked_results) == 1
 
     assistant_tool_calls = [m for m in result["messages"] if m.get("role") == "assistant" and m.get("tool_calls")]
     for assistant_msg in assistant_tool_calls:
@@ -314,13 +336,20 @@ def test_guardrail_halt_emits_final_response_through_stream_delta_callback():
     queue and emits a finish chunk with zero content (indistinguishable
     from a crash for Open WebUI and similar clients).
     """
-    agent = _make_agent("web_search", max_iterations=10, config=_hard_stop_config())
-    same_args = {"query": "same"}
+    agent = _make_agent(
+        "web_search",
+        max_iterations=10,
+        config=_hard_stop_config(hard_stop_after={
+            "exact_failure": 99,
+            "same_tool_failure": 2,
+            "idempotent_no_progress": 99,
+        }),
+    )
     responses = [
         _mock_response(
             content="",
             finish_reason="tool_calls",
-            tool_calls=[_mock_tool_call("web_search", json.dumps(same_args), f"c{i}")],
+            tool_calls=[_mock_tool_call("web_search", json.dumps({"query": f"query-{i}"}), f"c{i}")],
         )
         for i in range(1, 10)
     ]

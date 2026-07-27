@@ -1463,6 +1463,57 @@ class TestBuildSystemPrompt:
         assert mock_skills.call_args.kwargs["available_toolsets"] == {"web", "skills"}
 
 
+class TestModelGuidanceConfig:
+    """Compact role guidance is selected once from the active model id."""
+
+    def _make_agent(self, model, guidance):
+        with (
+            patch("run_agent.get_tool_definitions", return_value=[]),
+            patch("run_agent.check_toolset_requirements", return_value={}),
+            patch("run_agent.OpenAI"),
+            patch(
+                "hermes_cli.config.load_config",
+                return_value={"agent": {"model_guidance": guidance}},
+            ),
+        ):
+            return AIAgent(
+                model=model,
+                api_key="test-key-1234567890",
+                base_url="https://openrouter.ai/api/v1",
+                quiet_mode=True,
+                skip_context_files=True,
+                skip_memory=True,
+            )
+
+    def test_injects_common_and_longest_model_match(self):
+        agent = self._make_agent(
+            "anthropic/claude-opus-4-6",
+            {
+                "common": "EPISTEMIC CONTRACT",
+                "models": {
+                    "claude": "GENERIC CLAUDE",
+                    "claude-opus-4-6": "MAIN ORCHESTRATOR",
+                },
+            },
+        )
+        prompt = agent._build_system_prompt()
+        assert "EPISTEMIC CONTRACT" in prompt
+        assert "MAIN ORCHESTRATOR" in prompt
+        assert "GENERIC CLAUDE" not in prompt
+
+    def test_uses_default_when_no_model_matches(self):
+        agent = self._make_agent(
+            "unknown/model",
+            {"default": "DEFAULT ROLE", "models": {"gpt": "GPT ROLE"}},
+        )
+        assert "DEFAULT ROLE" in agent._build_system_prompt()
+
+    def test_malformed_config_is_ignored(self):
+        agent = self._make_agent("gpt-5.6-sol", ["not", "a", "mapping"])
+        prompt = agent._build_system_prompt()
+        assert "not a mapping" not in prompt
+
+
 class TestToolUseEnforcementConfig:
     """Tests for the agent.tool_use_enforcement config option."""
 
