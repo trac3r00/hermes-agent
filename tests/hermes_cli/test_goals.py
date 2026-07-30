@@ -90,6 +90,65 @@ class TestParseJudgeResponse:
         v, _, _, _ = _parse_judge_response('{"verdict": "continue", "reason": "r"}')
         assert v == "continue"
 
+    def test_plain_text_done_verdict(self):
+        from hermes_cli.goals import _parse_judge_response
+
+        verdict, reason, parse_failed, wait = _parse_judge_response("done")
+
+        assert verdict == "done"
+        assert reason == "no reason provided"
+        assert parse_failed is False
+        assert wait is None
+
+    def test_labeled_text_done_verdict_with_reason(self):
+        from hermes_cli.goals import _parse_judge_response
+
+        verdict, reason, parse_failed, wait = _parse_judge_response(
+            "Verdict: done\nReason: completion evidence is recorded."
+        )
+
+        assert verdict == "done"
+        assert reason == "completion evidence is recorded."
+        assert parse_failed is False
+        assert wait is None
+
+    @pytest.mark.parametrize(
+        ("raw", "expected_reason"),
+        [
+            ("```\ndone\n```", "no reason provided"),
+            ("```\nVerdict: done\nReason: completion evidence is recorded.\n```", "completion evidence is recorded."),
+        ],
+    )
+    def test_fenced_text_verdict(self, raw, expected_reason):
+        from hermes_cli.goals import _parse_judge_response
+
+        verdict, reason, parse_failed, wait = _parse_judge_response(raw)
+
+        assert verdict == "done"
+        assert reason == expected_reason
+        assert parse_failed is False
+        assert wait is None
+
+    def test_plain_text_continue_verdict(self):
+        from hermes_cli.goals import _parse_judge_response
+
+        verdict, reason, parse_failed, wait = _parse_judge_response("continue")
+
+        assert verdict == "continue"
+        assert reason == "no reason provided"
+        assert parse_failed is False
+        assert wait is None
+
+    def test_plain_text_wait_without_target_downgrades_to_continue(self):
+        from hermes_cli.goals import _parse_judge_response
+
+        verdict, reason, parse_failed, wait = _parse_judge_response("wait")
+
+        assert verdict == "continue"
+        assert "wait verdict had no target" in reason
+        assert parse_failed is False
+        assert wait is None
+
     def test_wait_verdict_with_pid(self):
         from hermes_cli.goals import _parse_judge_response
 

@@ -664,6 +664,10 @@ def _session_waiting(session_id: str) -> bool:
 
 
 _JSON_OBJECT_RE = re.compile(r"\{.*?\}", re.DOTALL)
+_TEXT_VERDICT_RE = re.compile(
+    r"(?:Verdict:[ \t]*)?(done|continue|wait)[ \t]*(?:\r?\nReason:[ \t]*(.+))?",
+    re.IGNORECASE,
+)
 
 
 def _goal_judge_max_tokens() -> int:
@@ -696,16 +700,19 @@ def _parse_judge_response(raw: str) -> Tuple[str, str, bool, Optional[Dict[str, 
     Returns ``(verdict, reason, parse_failed, wait_directive)`` where:
       - ``verdict`` is ``"done"``, ``"continue"``, or ``"wait"``.
       - ``parse_failed`` is True when the judge returned output that couldn't
-        be interpreted as the expected JSON verdict (empty body, prose,
-        malformed JSON). Callers use it to auto-pause after N consecutive
-        parse failures so a weak judge model doesn't silently burn the budget.
+        be interpreted as JSON or as a strict textual verdict (empty body,
+        arbitrary prose, malformed JSON). Callers use it to auto-pause after N
+        consecutive parse failures so a weak judge model doesn't silently burn
+        the budget.
       - ``wait_directive`` is set only for ``verdict == "wait"``: a dict with
         ``{"pid": int}`` or ``{"seconds": int}`` (whichever the judge supplied).
         ``None`` otherwise. If a wait verdict carries neither a usable pid nor
         seconds, it is downgraded to ``continue`` (can't park on nothing).
 
-    Accepts both the new ``{"verdict": ...}`` shape and the legacy
-    ``{"done": <bool>}`` shape.
+    Accepts the new ``{"verdict": ...}`` shape, the legacy
+    ``{"done": <bool>}`` shape, and a complete textual ``done``, ``continue``,
+    or ``wait`` verdict. Textual verdicts may start with ``Verdict:`` and may
+    include one following ``Reason:`` line; other prose remains a parse failure.
     """
     if not raw:
         return "continue", "judge returned empty response", True, None
@@ -719,6 +726,15 @@ def _parse_judge_response(raw: str) -> Tuple[str, str, bool, Optional[Dict[str, 
         nl = text.find("\n")
         if nl != -1:
             text = text[nl + 1:]
+        text = text.strip()
+
+    text_verdict = _TEXT_VERDICT_RE.fullmatch(text)
+    if text_verdict:
+        verdict = text_verdict.group(1).lower()
+        reason = (text_verdict.group(2) or "").strip() or "no reason provided"
+        if verdict == "wait":
+            return "continue", f"{reason} (wait verdict had no target — continuing)", False, None
+        return verdict, reason, False, None
 
     # First try: parse the whole blob.
     data: Optional[Dict[str, Any]] = None
