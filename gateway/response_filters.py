@@ -7,10 +7,18 @@ conversation history.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 # Canonical model-emitted control token for intentional silence.
 SILENT_REPLY_TOKEN = "NO_REPLY"
+
+_INTERNAL_TOOL_SCHEMA_REPAIR_RE = re.compile(
+    r"^(?P<tool>[A-Za-z_][\w.-]*):\s*error:\s*(?P=tool):\s*"
+    r"missing required field '(?:path|content)'\.\s*"
+    r"Re-emit the tool call with both 'path' and 'content' set\.?$",
+    re.IGNORECASE,
+)
 
 # Exact whole-response markers that mean "the agent intentionally chose not to
 # reply".  Keep this list small and explicit; arbitrary empty output remains an
@@ -44,10 +52,14 @@ def is_intentional_silence_response(response: Any) -> bool:
     return _canonical_silence_candidate(stripped) in LIVE_GATEWAY_SILENT_MARKERS
 
 
-def is_intentional_silence_agent_result(agent_result: dict | None, response: Any) -> bool:
-    """Silence markers suppress delivery only for successful agent turns."""
+def is_intentional_silence_agent_result(
+    agent_result: dict[str, Any] | None, response: Any
+) -> bool:
+    """Return True when a completed turn must not be delivered to chat."""
     if not isinstance(agent_result, dict):
         return False
+    if isinstance(response, str) and _INTERNAL_TOOL_SCHEMA_REPAIR_RE.fullmatch(response.strip()):
+        return True
     if agent_result.get("failed"):
         return False
     return is_intentional_silence_response(response)
