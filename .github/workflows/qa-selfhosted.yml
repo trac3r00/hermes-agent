@@ -1,9 +1,10 @@
 name: QA (self-hosted PVE)
 
+# 이 저장소 컨벤션: 개별 워크플로는 자체 push/pull_request 트리거를 갖지 않고
+# ci.yml 오케스트레이터가 workflow_call 로 호출한다. 수동 확인용으로
+# workflow_dispatch 만 별도 유지한다.
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
@@ -23,8 +24,8 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/python -m pip install -q --upgrade pip
-          # 테스트 수집에 messaging(aiohttp.test_utils) extras가 필요함
-          .venv/bin/python -m pip install -q -e '.[dev,messaging]' || .venv/bin/python -m pip install -q -e '.[dev]'
+          # 테스트 수집에 messaging(aiohttp.test_utils), acp extras가 필요함
+          .venv/bin/python -m pip install -q -e '.[dev,messaging,acp]' || .venv/bin/python -m pip install -q -e '.[dev]'
 
       - name: 문법 검사
         run: .venv/bin/python -m compileall -q hermes_cli agent tools

@@ -1,8 +1,10 @@
 name: senpi 코드리뷰
 
+# 이 저장소 컨벤션: 개별 워크플로는 자체 pull_request 트리거를 갖지 않고
+# ci.yml 오케스트레이터가 workflow_call 로 호출한다.
+# workflow_call 로 불려도 github.event.pull_request 컨텍스트는 그대로 유지된다.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
