@@ -2474,9 +2474,11 @@ def _format_gateway_process_notification(evt: dict) -> "str | None":
 def _drain_gateway_watch_events(completion_queue) -> "list[dict]":
     """Drain gateway-owned watch events without spinning on requeued events.
 
-    Watch events are handled by the post-turn gateway drain. Process
-    completions are owned by their per-process watcher task, and async
-    delegation completions are owned by ``_async_delegation_watcher``.
+    Explicit watch matches are handled by the post-turn gateway drain.
+    Watcher-disable events are internal lifecycle signals and must not create
+    a synthetic user turn. Process completions are owned by their per-process
+    watcher task, and async delegation completions are owned by
+    ``_async_delegation_watcher``.
     Requeueing async events inside ``while not queue.empty()`` would make the
     loop non-terminating, so detach the current batch first, then requeue any
     events this drain does not own after the queue is empty.
@@ -2489,7 +2491,7 @@ def _drain_gateway_watch_events(completion_queue) -> "list[dict]":
         except Exception:
             break
         evt_type = evt.get("type", "completion")
-        if evt_type in {"watch_match", "watch_disabled"}:
+        if evt_type == "watch_match":
             watch_events.append(evt)
         elif evt_type == "async_delegation":
             requeue.append(evt)
@@ -17373,6 +17375,7 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                             fresh_final_after_seconds=_fresh_final_secs,
                             transport=_scfg.transport or "edit",
                             chat_type=getattr(source, "chat_type", "") or "",
+                            model=model or "",
                         )
                         _stream_consumer = GatewayStreamConsumer(
                             adapter=_adapter,

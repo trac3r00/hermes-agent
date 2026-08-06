@@ -13,7 +13,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 from hermes_constants import get_hermes_home, get_skills_dir, is_wsl
-from typing import Optional
+from typing import Any, Optional
 
 from agent.runtime_cwd import resolve_agent_cwd
 from agent.skill_utils import (
@@ -313,6 +313,32 @@ TOOL_USE_ENFORCEMENT_MODELS = ("gpt", "codex", "gemini", "gemma", "grok", "glm",
 # Short on purpose.  This block is shipped to every user, every session,
 # in the cached system prompt — token cost is paid once at install and
 # then amortised across all sessions via prefix caching.  Keep it tight.
+NEVER_GIVE_UP_GUIDANCE = (
+    "# Recovering from tool failures\n"
+    "A blocked or failed tool call is feedback, not a reason to abandon the task. "
+    "Do not retry an unchanged failed call. Inspect its result, then take one "
+    "materially different valid action using a corrected call, another tool, or a "
+    "focused diagnostic. Keep working from real tool output; never fabricate a result. "
+    "If an external dependency truly prevents progress, report the concrete blocker "
+    "after a focused diagnostic. When the user asks you to find, research, or discover "
+    "something yourself, perform that discovery with available tools before asking for "
+    "locations or sources. For work that needs more than one bounded investigation, "
+    "delegate independent research where available, assess the returned evidence, and "
+    "continue to the requested outcome. Do not end a turn with only a plan, status update, "
+    "or summary while actionable research or implementation remains. Before giving "
+    "time-sensitive advice, use the current session timestamp, recent user messages, and "
+    "available live sources; state uncertainty instead of treating a stale assumption as "
+    "fact. When the user supplies concrete contradictory evidence, acknowledge it, revise "
+    "the conclusion, and investigate the discrepancy rather than defending the prior "
+    "answer. For implementation requests, inspect and change the actual system before "
+    "suggesting settings the user could change manually. Do not present a current external "
+    "fact, available option, configuration name, or completed action as certain without "
+    "direct evidence from the live system or an authoritative current source. Distinguish "
+    "verified facts from inferences and unknowns. If evidence is insufficient, say what is "
+    "unknown, perform the next available check, and only then ask the user for a missing "
+    "decision or inaccessible credential."
+)
+
 TASK_COMPLETION_GUIDANCE = (
     "# Finishing the job\n"
     "When the user asks you to build, run, or verify something, the deliverable is "
@@ -985,10 +1011,10 @@ def _probe_remote_backend(env_type: str) -> str | None:
             image=image,
             cwd=config.get("cwd", ""),
             timeout=config.get("timeout", 180),
-            ssh_config=ssh_config,
-            container_config=container_config,
+            ssh_config=ssh_config or {},
+            container_config=container_config or {},
             task_id="prompt-backend-probe",
-            host_cwd=config.get("host_cwd"),
+            host_cwd=str(config.get("host_cwd") or ""),
         )
         # Single-line POSIX probe — works on any Unixy backend. Wrapped in
         # `2>/dev/null` so a missing binary doesn't pollute the output.
@@ -1224,7 +1250,7 @@ def _get_context_file_max_chars(context_length: Optional[int] = None) -> int:
 # per async task, so concurrent gateway-session prompt builds can't drain or
 # clear each other's pending warnings (cross-session leak). Each build runs in
 # its own context, collects its own warnings, and drains them synchronously.
-_truncation_warnings: "contextvars.ContextVar[Optional[list]]" = contextvars.ContextVar(
+_truncation_warnings: "contextvars.ContextVar[Optional[list[Any]]]" = contextvars.ContextVar(
     "context_file_truncation_warnings", default=None
 )
 
@@ -1238,7 +1264,7 @@ def _record_truncation_warning(msg: str) -> None:
     warnings.append(msg)
 
 
-def drain_truncation_warnings() -> list:
+def drain_truncation_warnings() -> list[str]:
     """Return and clear any truncation warnings accumulated in this context."""
     warnings = _truncation_warnings.get()
     if not warnings:
@@ -1253,7 +1279,7 @@ def drain_truncation_warnings() -> list:
 # =========================================================================
 
 _SKILLS_PROMPT_CACHE_MAX = 8
-_SKILLS_PROMPT_CACHE: OrderedDict[tuple, str] = OrderedDict()
+_SKILLS_PROMPT_CACHE: OrderedDict[tuple[object, ...], str] = OrderedDict()
 _SKILLS_PROMPT_CACHE_LOCK = threading.Lock()
 _SKILLS_SNAPSHOT_VERSION = 1
 
@@ -1286,7 +1312,7 @@ def _build_skills_manifest(skills_dir: Path) -> dict[str, list[int]]:
     return manifest
 
 
-def _load_skills_snapshot(skills_dir: Path) -> Optional[dict]:
+def _load_skills_snapshot(skills_dir: Path) -> Optional[dict[str, Any]]:
     """Load the disk snapshot if it exists and its manifest still matches."""
     snapshot_path = _skills_prompt_snapshot_path()
     if not snapshot_path.exists():
@@ -1307,7 +1333,7 @@ def _load_skills_snapshot(skills_dir: Path) -> Optional[dict]:
 def _write_skills_snapshot(
     skills_dir: Path,
     manifest: dict[str, list[int]],
-    skill_entries: list[dict],
+    skill_entries: list[dict[str, Any]],
     category_descriptions: dict[str, str],
 ) -> None:
     """Persist skill metadata to disk for fast cold-start reuse."""
@@ -1326,9 +1352,9 @@ def _write_skills_snapshot(
 def _build_snapshot_entry(
     skill_file: Path,
     skills_dir: Path,
-    frontmatter: dict,
+    frontmatter: dict[str, Any],
     description: str,
-) -> dict:
+) -> dict[str, Any]:
     """Build a serialisable metadata dict for one skill."""
     rel_path = skill_file.relative_to(skills_dir)
     parts = rel_path.parts
@@ -1357,7 +1383,7 @@ def _build_snapshot_entry(
 # Skills index
 # =========================================================================
 
-def _parse_skill_file(skill_file: Path) -> tuple[bool, dict, str]:
+def _parse_skill_file(skill_file: Path) -> tuple[bool, dict[str, Any], str]:
     """Read a SKILL.md once and return platform compatibility, frontmatter, and description.
 
     Returns (is_compatible, frontmatter, description). On any error, returns
@@ -1384,7 +1410,7 @@ def _parse_skill_file(skill_file: Path) -> tuple[bool, dict, str]:
 
 
 def _skill_should_show(
-    conditions: dict,
+    conditions: dict[str, Any],
     available_tools: "set[str] | None",
     available_toolsets: "set[str] | None",
 ) -> bool:
@@ -1504,7 +1530,7 @@ def build_skills_system_prompt(
         }
     else:
         # Cold path: full filesystem scan + write snapshot for next time
-        skill_entries: list[dict] = []
+        skill_entries: list[dict[str, Any]] = []
         for skill_file in iter_skill_index_files(skills_dir, "SKILL.md"):
             is_compatible, frontmatter, desc = _parse_skill_file(skill_file)
             entry = _build_snapshot_entry(skill_file, skills_dir, frontmatter, desc)

@@ -36,6 +36,7 @@ from gateway.response_filters import (
     is_intentional_silence_response as _is_intentional_silence_response,
     is_partial_silence_marker as _is_partial_silence_marker,
 )
+from gateway.commentary_filters import is_procedural_narration
 
 logger = logging.getLogger("gateway.stream_consumer")
 
@@ -78,6 +79,12 @@ class StreamConsumerConfig:
     # "group", "supergroup", "forum").  Used to gate native draft streaming,
     # which is platform-specific (Telegram drafts are DM-only).
     chat_type: str = ""
+    # Resolved model name for the run feeding this consumer.  Used only to gate
+    # interim-commentary suppression: models known to narrate every tool call
+    # (opus-5 family) get their purely procedural interim segments dropped, so
+    # the chat shows findings instead of a play-by-play.  Empty = no filtering,
+    # preserving legacy behavior for every other model.
+    model: str = ""
 
 
 class GatewayStreamConsumer:
@@ -317,7 +324,21 @@ class GatewayStreamConsumer:
         self._queue.put(_NEW_SEGMENT)
 
     def on_commentary(self, text: str) -> None:
-        """Queue a completed interim assistant commentary message."""
+        """Queue a completed interim assistant commentary message.
+
+        Purely procedural narration ("먼저 확인하겠습니다.", "Let me check the
+        config.") is dropped for models that emit it before nearly every tool
+        call — it adds a chat bubble per tool without adding information.  The
+        filter is model-gated and only ever inspects *interim* commentary; the
+        final response never passes through here.
+        """
+        if text and is_procedural_narration(text, self.cfg.model):
+            logger.debug(
+                "StreamConsumer: dropped procedural commentary (%d chars, model=%s)",
+                len(text),
+                self.cfg.model,
+            )
+            return
         if text:
             self._queue.put((_COMMENTARY, text))
 

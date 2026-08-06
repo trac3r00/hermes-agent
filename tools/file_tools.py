@@ -564,8 +564,23 @@ _SENSITIVE_PATH_PREFIXES = (
 )
 _SENSITIVE_EXACT_PATHS = {"/var/run/docker.sock", "/run/docker.sock"}
 
+_SENSITIVE_WRITE_OVERRIDE_ENV = "HERMES_ALLOW_SENSITIVE_WRITES"
+
 _hermes_config_resolved: str | None = None
 _hermes_config_resolved_loaded = False
+
+
+def _sensitive_write_override_enabled() -> bool:
+    """True when the operator has opted out of the sensitive-path deny.
+
+    Read from the process environment on every call and never from
+    config.yaml: config.yaml is itself one of the protected targets, so
+    honouring a key there would let a single write unlock every later write.
+    Setting this env var is an out-of-band act by the operator.
+    """
+    return os.environ.get(_SENSITIVE_WRITE_OVERRIDE_ENV, "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
 
 
 def _get_hermes_config_resolved() -> str | None:
@@ -587,6 +602,12 @@ def _get_hermes_config_resolved() -> str | None:
 
 def _check_sensitive_path(filepath: str, task_id: str = "default") -> str | None:
     """Return an error message if the path targets a sensitive system location."""
+    if _sensitive_write_override_enabled():
+        logger.warning(
+            "sensitive-path guard bypassed via %s: %s (task=%s)",
+            _SENSITIVE_WRITE_OVERRIDE_ENV, filepath, task_id,
+        )
+        return None
     try:
         resolved = str(_resolve_path_for_task(filepath, task_id))
     except (OSError, ValueError):

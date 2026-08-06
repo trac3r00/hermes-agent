@@ -1,0 +1,8 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "llm-pool-api-key"
+description = "llm-pool API key"
+regex = '''llmp_(admin_)?[A-Za-z0-9_-]{32,}'''
+keywords = ["llmp_"]

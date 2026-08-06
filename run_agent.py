@@ -5556,20 +5556,6 @@ class AIAgent:
             force=force,
         )
 
-    def _set_tool_guardrail_halt(self, decision: ToolGuardrailDecision) -> None:
-        """Record the first guardrail decision that should stop this turn."""
-        if decision.should_halt and self._tool_guardrail_halt_decision is None:
-            self._tool_guardrail_halt_decision = decision
-
-    def _toolguard_controlled_halt_response(self, decision: ToolGuardrailDecision) -> str:
-        tool = decision.tool_name or "a tool"
-        return (
-            f"I stopped retrying {tool} because it hit the tool-call guardrail "
-            f"({decision.code}) after {decision.count} repeated non-progressing "
-            "attempts. The last tool result explains the blocker; the next step is "
-            "to change strategy instead of repeating the same call."
-        )
-
     def _append_guardrail_observation(
         self,
         tool_name: str,
@@ -5577,21 +5563,20 @@ class AIAgent:
         function_result: str,
         *,
         failed: bool,
+        prior_failures: int | None = None,
     ) -> str:
         decision = self._tool_guardrails.after_call(
             tool_name,
             function_args,
             function_result,
             failed=failed,
+            prior_failures=prior_failures,
         )
-        if decision.action in {"warn", "halt"}:
+        if decision.action == "warn":
             function_result = append_toolguard_guidance(function_result, decision)
-        if decision.should_halt:
-            self._set_tool_guardrail_halt(decision)
         return function_result
 
     def _guardrail_block_result(self, decision: ToolGuardrailDecision) -> str:
-        self._set_tool_guardrail_halt(decision)
         return toolguard_synthetic_result(decision)
 
     def _execute_tool_calls(self, assistant_message, messages: list, effective_task_id: str, api_call_count: int = 0) -> None:

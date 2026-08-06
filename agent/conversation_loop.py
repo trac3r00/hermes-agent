@@ -4374,26 +4374,22 @@ def run_conversation(
                     # Track retries for invalid tool calls
                     agent._invalid_tool_retries += 1
 
-                    # Return helpful error to model — model can agent-correct next turn
+                    # Preserve this assistant tool-call turn and pair every call with a
+                    # synthetic result. Providers require each tool_call_id to be answered
+                    # before the next model request; blocked calls never reach execution.
                     available = ", ".join(sorted(agent.valid_tool_names))
                     invalid_name = invalid_tool_calls[0]
                     invalid_preview = invalid_name[:80] + "..." if len(invalid_name) > 80 else invalid_name
-                    agent._buffer_vprint(f"⚠️  Unknown tool '{invalid_preview}' — sending error to model for agent-correction ({agent._invalid_tool_retries}/3)")
-
+                    agent._buffer_vprint(
+                        f"⚠️  Unknown tool '{invalid_preview}' — sending recovery guidance to the model."
+                    )
                     if agent._invalid_tool_retries >= 3:
                         agent._flush_status_buffer()
-                        agent._vprint(f"{agent.log_prefix}❌ Max retries (3) for invalid tool calls exceeded. Stopping as partial.", force=True)
+                        agent._vprint(
+                            f"{agent.log_prefix}⚠️  Repeated invalid tool route blocked; steering recovery.",
+                            force=True,
+                        )
                         agent._invalid_tool_retries = 0
-                        agent._persist_session(messages, conversation_history)
-                        _final_response = f"Model generated invalid tool call: {invalid_preview}"
-                        return {
-                            "final_response": _final_response,
-                            "messages": messages,
-                            "api_calls": api_call_count,
-                            "completed": False,
-                            "partial": True,
-                            "error": _final_response
-                        }
 
                     assistant_msg = agent._build_assistant_message(assistant_message, finish_reason)
                     messages.append(assistant_msg)
@@ -4423,13 +4419,23 @@ def run_conversation(
                             else:
                                 content = f"Tool '{_tc_name}' does not exist. Available tools: {available}"
                         else:
-                            content = "Skipped: another tool call in this turn used an invalid name. Please retry this tool call."
+                            content = (
+                                "Skipped: another tool call in this turn used an invalid name. "
+                                "Reissue this valid tool call in a separate recovery turn."
+                            )
                         messages.append({
                             "role": "tool",
                             "name": tc.function.name,
                             "tool_call_id": tc.id,
                             "content": content,
                         })
+                    messages.append(
+                        _build_system_reminder(
+                            invalid_name,
+                            agent._invalid_tool_retries,
+                            "invalid tool name",
+                        )
+                    )
                     continue
                 # Reset retry counter on successful tool call validation
                 agent._invalid_tool_retries = 0
@@ -4620,28 +4626,6 @@ def run_conversation(
 
                 agent._execute_tool_calls(assistant_message, messages, effective_task_id, api_call_count)
 
-                if agent._tool_guardrail_halt_decision is not None:
-                    decision = agent._tool_guardrail_halt_decision
-                    _turn_exit_reason = "guardrail_halt"
-                    final_response = agent._toolguard_controlled_halt_response(decision)
-                    agent._emit_status(
-                        f"⚠️ Tool guardrail halted {decision.tool_name}: {decision.code}"
-                    )
-                    messages.append({"role": "assistant", "content": final_response})
-                    # Emit the halt message to the client so it's not
-                    # indistinguishable from a crash.  The stream display
-                    # was flushed (callback(None)) before tool execution,
-                    # but the callback is still alive — fire the text
-                    # through it so SSE/TUI clients see the explanation.
-                    if final_response:
-                        agent._safe_print(f"\n{final_response}\n")
-                        if agent.stream_delta_callback:
-                            try:
-                                agent.stream_delta_callback(final_response)
-                                agent.stream_delta_callback(None)
-                            except Exception:
-                                pass
-                    break
 
                 # Reset per-turn retry counters after successful tool
                 # execution so a single truncation doesn't poison the
@@ -5105,19 +5089,28 @@ def run_conversation(
                                  agent._verification_stop_nudges)
                     continue
 
-                # User verification-loop gate: when the agent edited code this
-                # turn, let a registered `pre_verify` hook (plugin/shell) keep it
-                # going one more turn. The shipped guidance is folded into the
-                # evidence-based verify-on-stop nudge above, so this path has no
-                # default continuation cost.
+                # Final-response verification gate: let a registered `pre_verify`
+                # hook reject a proposed final answer and continue the real
+                # model/tool loop. This deliberately is not limited to file
+                # edits: Bob also verifies failed operational work such as cron
+                # administration, where no source file changes. Hooks that only
+                # apply to coding can no-op when ``changed_paths`` is empty.
                 _verify_nudge2 = None
                 _edited = sorted(getattr(agent, "_turn_file_mutation_paths", set()) or [])
                 _attempt = getattr(agent, "_pre_verify_nudges", 0)
+                _failed_tool_result = any(
+                    message.get("role") == "tool"
+                    and "error" in str(message.get("content", "")).lower()
+                    for message in messages[current_turn_user_idx + 1:]
+                    if isinstance(message, dict)
+                )
                 try:
                     from agent.verify_hooks import max_verify_nudges
                     from hermes_cli.plugins import get_pre_verify_continue_message, has_hook
 
-                    if _edited and has_hook("pre_verify") and _attempt < max_verify_nudges():
+                    if has_hook("pre_verify") and (
+                        _attempt < max_verify_nudges() or _failed_tool_result
+                    ):
                         # Posture is fixed for the session — resolve once + cache.
                         coding = getattr(agent, "_resolved_is_coding", None)
                         if coding is None:

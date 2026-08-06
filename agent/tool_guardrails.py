@@ -64,15 +64,16 @@ MUTATING_TOOL_NAMES = frozenset(
 class ToolCallGuardrailConfig:
     """Thresholds for per-turn tool-call loop detection.
 
-    Warnings are enabled by default and never prevent tool execution. Hard stops
-    are explicit opt-in so interactive CLI/TUI sessions get a gentle nudge unless
-    the user enables circuit-breaker behavior in config.yaml.
+    Warnings are enabled by default and never prevent tool execution. Repeated
+    failures are always steered back into the model/tool loop; the legacy
+    hard-stop settings remain readable for configuration compatibility but do
+    not terminate a user turn.
     """
 
     warnings_enabled: bool = True
     hard_stop_enabled: bool = False
     exact_failure_warn_after: int = 2
-    exact_failure_block_after: int = 5
+    exact_failure_block_after: int = 2
     same_tool_failure_warn_after: int = 3
     same_tool_failure_halt_after: int = 8
     no_progress_warn_after: int = 2
@@ -145,7 +146,7 @@ class ToolCallSignature:
 class ToolGuardrailDecision:
     """Decision returned by the tool-call guardrail controller."""
 
-    action: str = "allow"  # allow | warn | block | halt
+    action: str = "allow"  # allow | warn | steer
     code: str = "allow"
     message: str = ""
     tool_name: str = ""
@@ -154,11 +155,12 @@ class ToolGuardrailDecision:
 
     @property
     def allows_execution(self) -> bool:
-        return self.action in {"allow", "warn"}
+        """Whether the current call may reach the real tool implementation."""
+        return self.action != "steer"
 
     @property
-    def should_halt(self) -> bool:
-        return self.action in {"block", "halt"}
+    def should_inject_steering(self) -> bool:
+        return self.action == "steer"
 
     def to_metadata(self) -> dict[str, Any]:
         data: dict[str, Any] = {
@@ -232,53 +234,43 @@ class ToolCallGuardrailController:
         self._exact_failure_counts: dict[ToolCallSignature, int] = {}
         self._same_tool_failure_counts: dict[str, int] = {}
         self._no_progress: dict[ToolCallSignature, tuple[str, int]] = {}
-        self._halt_decision: ToolGuardrailDecision | None = None
+        self._steering_injected: set[ToolCallSignature] = set()  # Track which signatures got steering
 
-    @property
-    def halt_decision(self) -> ToolGuardrailDecision | None:
-        return self._halt_decision
+    def prior_failure_count(
+        self, tool_name: str, args: Mapping[str, Any] | None
+    ) -> int:
+        """Return failures for this exact call before a new execution begins."""
+        signature = ToolCallSignature.from_call(tool_name, _coerce_args(args))
+        return self._exact_failure_counts.get(signature, 0)
 
     def before_call(self, tool_name: str, args: Mapping[str, Any] | None) -> ToolGuardrailDecision:
         signature = ToolCallSignature.from_call(tool_name, _coerce_args(args))
-        if not self.config.hard_stop_enabled:
-            return ToolGuardrailDecision(tool_name=tool_name, signature=signature)
-
         exact_count = self._exact_failure_counts.get(signature, 0)
         if exact_count >= self.config.exact_failure_block_after:
-            decision = ToolGuardrailDecision(
-                action="block",
-                code="repeated_exact_failure_block",
-                message=(
-                    f"Blocked {tool_name}: the same tool call failed {exact_count} "
-                    "times with identical arguments. Stop retrying it unchanged; "
-                    "change strategy or explain the blocker."
-                ),
+            self._steering_injected.add(signature)
+            return ToolGuardrailDecision(
+                action="steer",
+                code="repeated_exact_failure_steering",
+                message="",
                 tool_name=tool_name,
                 count=exact_count,
                 signature=signature,
             )
-            self._halt_decision = decision
-            return decision
 
         if self._is_idempotent(tool_name):
             record = self._no_progress.get(signature)
             if record is not None:
                 _result_hash, repeat_count = record
                 if repeat_count >= self.config.no_progress_block_after:
-                    decision = ToolGuardrailDecision(
-                        action="block",
-                        code="idempotent_no_progress_block",
-                        message=(
-                            f"Blocked {tool_name}: this read-only call returned the same "
-                            f"result {repeat_count} times. Stop repeating it unchanged; "
-                            "use the result already provided or try a different query."
-                        ),
+                    self._steering_injected.add(signature)
+                    return ToolGuardrailDecision(
+                        action="steer",
+                        code="idempotent_no_progress_steering",
+                        message="",
                         tool_name=tool_name,
                         count=repeat_count,
                         signature=signature,
                     )
-                    self._halt_decision = decision
-                    return decision
 
         return ToolGuardrailDecision(tool_name=tool_name, signature=signature)
 
@@ -289,6 +281,7 @@ class ToolCallGuardrailController:
         result: str | None,
         *,
         failed: bool | None = None,
+        prior_failures: int | None = None,
     ) -> ToolGuardrailDecision:
         args = _coerce_args(args)
         signature = ToolCallSignature.from_call(tool_name, args)
@@ -296,27 +289,17 @@ class ToolCallGuardrailController:
             failed, _ = classify_tool_failure(tool_name, result)
 
         if failed:
-            exact_count = self._exact_failure_counts.get(signature, 0) + 1
+            failure_count = (
+                prior_failures
+                if prior_failures is not None
+                else self._exact_failure_counts.get(signature, 0)
+            )
+            exact_count = failure_count + 1
             self._exact_failure_counts[signature] = exact_count
             self._no_progress.pop(signature, None)
 
             same_count = self._same_tool_failure_counts.get(tool_name, 0) + 1
             self._same_tool_failure_counts[tool_name] = same_count
-
-            if self.config.hard_stop_enabled and same_count >= self.config.same_tool_failure_halt_after:
-                decision = ToolGuardrailDecision(
-                    action="halt",
-                    code="same_tool_failure_halt",
-                    message=(
-                        f"Stopped {tool_name}: it failed {same_count} times this turn. "
-                        "Stop retrying the same failing tool path and choose a different approach."
-                    ),
-                    tool_name=tool_name,
-                    count=same_count,
-                    signature=signature,
-                )
-                self._halt_decision = decision
-                return decision
 
             if self.config.warnings_enabled and exact_count >= self.config.exact_failure_warn_after:
                 return ToolGuardrailDecision(
@@ -381,11 +364,16 @@ class ToolCallGuardrailController:
 
 
 def toolguard_synthetic_result(decision: ToolGuardrailDecision) -> str:
-    """Build a synthetic role=tool content string for a blocked tool call."""
+    """Build a synthetic role=tool content string for a rejected tool call."""
     return json.dumps(
         {
-            "error": decision.message,
-            "guardrail": decision.to_metadata(),
+            "error": "tool_guardrail_rejected",
+            "code": decision.code,
+            "message": (
+                "This repeated tool call was not executed. Inspect the prior error "
+                "and choose a materially different valid action."
+            ),
+            "tool_name": decision.tool_name,
         },
         ensure_ascii=False,
     )
@@ -393,9 +381,9 @@ def toolguard_synthetic_result(decision: ToolGuardrailDecision) -> str:
 
 def append_toolguard_guidance(result: str, decision: ToolGuardrailDecision) -> str:
     """Append runtime guidance to the current tool result content."""
-    if decision.action not in {"warn", "halt"} or not decision.message:
+    if decision.action != "warn" or not decision.message:
         return result
-    label = "Tool loop hard stop" if decision.action == "halt" else "Tool loop warning"
+    label = "Tool loop warning"
     suffix = (
         f"\n\n[{label}: "
         f"{decision.code}; count={decision.count}; {decision.message}]"
@@ -404,22 +392,83 @@ def append_toolguard_guidance(result: str, decision: ToolGuardrailDecision) -> s
 
 
 def _tool_failure_recovery_hint(tool_name: str, count: int) -> str:
-    """Action-oriented guidance for recovering from repeated tool failures."""
+    """Return private guidance that redirects a repeated failed call."""
+    del count
     common = (
-        f"{tool_name} has failed {count} times this turn. This looks like a loop. "
-        "Do not switch to text-only replies; keep using tools, but diagnose before retrying. "
-        "First inspect the latest error/output and verify your assumptions. "
+        f"`{tool_name}` has failed repeatedly. Do not call it again until you can "
+        "correct the specific error. Inspect the latest error/output, then choose a "
+        "different valid tool call or report the concrete blocker. "
     )
     if tool_name == "terminal":
         return common + (
-            "For terminal failures, run a small diagnostic such as `pwd && ls -la` "
-            "in the same tool, then try an absolute path, a simpler command, a different "
-            "working directory, or a different tool such as read_file/write_file/patch."
+            "For terminal failures, use a small diagnostic such as `pwd && ls -la` only "
+            "when it addresses the error; otherwise use a complete read_file/write_file/"
+            "patch call with every required field. If the blocker is external, report it "
+            "instead of repeating the failed command."
         )
     return common + (
-        "Try different arguments, a narrower query/path, an absolute path when relevant, "
-        "or a different tool that can make progress. If the blocker is external, report "
-        "the blocker after one diagnostic attempt instead of repeating the same failing path."
+        "Use complete required arguments, a narrower query/path, an absolute path when "
+        "relevant, or a different tool that can make progress. If the blocker is external, "
+        "report it instead of repeating the same failing path."
+    )
+
+
+def _tool_failure_steering(tool_name: str) -> tuple[str, str]:
+    """Return tool-specific diagnostic and alternative steps for a repeated call."""
+    if tool_name == "terminal":
+        return (
+            "Run `pwd && ls -la` in the same tool to verify cwd and permissions.",
+            "- Use absolute paths instead of relative paths.\n"
+            "- Try a simpler command.\n"
+            "- Use a different working directory.\n"
+            "- Use read_file, write_file, or patch when shell access is not needed.",
+        )
+    if tool_name in {"read_file", "write_file", "patch"}:
+        return (
+            "Verify the absolute path and that its parent directory exists and is accessible.",
+            "- Use an absolute path instead of a relative path.\n"
+            "- Read the parent directory before writing or patching.\n"
+            "- Try a smaller read or a simpler patch.\n"
+            "- Use terminal to inspect permissions or a different file tool.",
+        )
+    if tool_name in {"web_search", "web_extract"}:
+        return (
+            "Check network connectivity and inspect the service error before retrying.",
+            "- Try a narrower query or a different URL.\n"
+            "- Use a simpler query with fewer filters.\n"
+            "- Use web_extract for a known URL or web_search to find one.\n"
+            "- Report a service outage after the diagnostic attempt.",
+        )
+    if tool_name in {"skill_view", "skill_manage"}:
+        return (
+            "Check the skill name spelling and list available skills first.",
+            "- Use the exact listed skill name.\n"
+            "- Try skill_view before skill_manage.\n"
+            "- Request a smaller, valid skill operation.\n"
+            "- Use another tool if the task does not require a skill.",
+        )
+    if tool_name == "delegate_task":
+        return (
+            "Verify the task description and check subagent availability.",
+            "- Make the task description shorter and more specific.\n"
+            "- Split the work into a smaller task.\n"
+            "- Use an available subagent or perform the task directly.\n"
+            "- Report unavailable delegation infrastructure after the diagnostic attempt.",
+        )
+    if tool_name == "cronjob":
+        return (
+            "Verify the script path exists, check cron syntax, and test the script manually first.",
+            "- Use an absolute script path.\n"
+            "- Try a simpler cron schedule.\n"
+            "- Run the script manually with terminal before scheduling it.\n"
+            "- Use a different scheduler or report unavailable cron infrastructure.",
+        )
+    return (
+        "Inspect the latest error/output and verify the tool's required arguments.",
+        "- Try different arguments.\n"
+        "- Use a narrower query or path.\n"
+        "- Use an absolute path when relevant.\n"
+        "- Use a different tool that can make progress.",
     )
 
 
@@ -473,3 +522,23 @@ def _positive_int(value: Any, default: int) -> int:
 
 def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _build_system_reminder(tool_name: str, count: int, action: str) -> dict[str, str]:
+    """Build a private, actionable recovery directive for a blocked call."""
+    del count, action
+    diagnostic, alternatives = _tool_failure_steering(tool_name)
+    message = (
+        f"TOOL RECOVERY REQUIRED: the repeated `{tool_name}` call was blocked before "
+        "execution because it would repeat the same failing route. Continue the task; "
+        "do not retry that call unchanged and do not fabricate a result.\n\n"
+        f"1. {diagnostic}\n"
+        f"2. Take ONE materially different valid action:\n{alternatives}\n\n"
+        "Use the new tool result to continue. If an external dependency truly blocks "
+        "progress, perform one focused diagnostic, then report the concrete blocker."
+    )
+
+    return {
+        "role": "user",
+        "content": f"<system-reminder>\n{message}\n</system-reminder>",
+    }

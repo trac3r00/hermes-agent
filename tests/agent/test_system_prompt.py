@@ -76,6 +76,32 @@ def _init_code_repo(path):
     (path / "main.py").write_text("print('hi')\n")
 
 
+class TestTaskRecoveryGuidance:
+    def test_injected_with_tools_when_task_guidance_enabled(self):
+        agent = _make_agent(
+            valid_tool_names=["read_file"],
+            _task_completion_guidance=True,
+        )
+
+        stable = _stable_prompt(agent)
+
+        assert "# Recovering from tool failures" in stable
+        assert "Do not retry an unchanged failed call" in stable
+        assert "perform that discovery with available tools" in stable
+        assert "Do not end a turn with only a plan" in stable
+        assert "time-sensitive advice" in stable
+        assert "concrete contradictory evidence" in stable
+        assert "inspect and change the actual system" in stable
+        assert "without direct evidence from the live system" in stable
+        assert "Distinguish verified facts from inferences and unknowns" in stable
+        assert "# Finishing the job" in stable
+
+    def test_absent_without_tools(self):
+        agent = _make_agent(_task_completion_guidance=True)
+
+        assert "# Recovering from tool failures" not in _stable_prompt(agent)
+
+
 class TestCodingContextBlock:
     def test_injected_when_active(self, monkeypatch, tmp_path):
         _init_code_repo(tmp_path)

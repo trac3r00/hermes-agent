@@ -8,6 +8,8 @@ from agent.tool_guardrails import (
     ToolCallSignature,
     canonical_tool_args,
     classify_tool_failure,
+    _tool_failure_recovery_hint,
+    _build_system_reminder,
 )
 
 
@@ -41,7 +43,7 @@ def test_default_config_is_soft_warning_only_with_hard_stop_disabled():
     assert cfg.exact_failure_warn_after == 2
     assert cfg.same_tool_failure_warn_after == 3
     assert cfg.no_progress_warn_after == 2
-    assert cfg.exact_failure_block_after == 5
+    assert cfg.exact_failure_block_after == 2
     assert cfg.same_tool_failure_halt_after == 8
     assert cfg.no_progress_block_after == 5
 
@@ -74,7 +76,7 @@ def test_config_parses_nested_warn_and_hard_stop_thresholds():
     assert cfg.no_progress_block_after == 8
 
 
-def test_default_repeated_identical_failed_call_warns_without_blocking():
+def test_default_repeated_identical_failed_call_warns_then_steers():
     controller = ToolCallGuardrailController()
     args = {"query": "same"}
 
@@ -88,11 +90,13 @@ def test_default_repeated_identical_failed_call_warns_without_blocking():
     assert decisions[0].action == "allow"
     assert [d.action for d in decisions[1:]] == ["warn", "warn", "warn", "warn"]
     assert {d.code for d in decisions[1:]} == {"repeated_exact_failure_warning"}
-    assert controller.before_call("web_search", args).action == "allow"
-    assert controller.halt_decision is None
+    steer = controller.before_call("web_search", args)
+    assert steer.action == "steer"
+    assert steer.code == "repeated_exact_failure_steering"
+    assert not steer.allows_execution
 
 
-def test_hard_stop_enabled_blocks_repeated_exact_failure_before_next_execution():
+def test_legacy_hard_stop_config_steers_repeated_exact_failure_before_next_execution():
     controller = ToolCallGuardrailController(
         ToolCallGuardrailConfig(
             hard_stop_enabled=True,
@@ -112,10 +116,17 @@ def test_hard_stop_enabled_blocks_repeated_exact_failure_before_next_execution()
     assert second.action == "warn"
     assert second.code == "repeated_exact_failure_warning"
 
-    blocked = controller.before_call("web_search", args)
-    assert blocked.action == "block"
-    assert blocked.code == "repeated_exact_failure_block"
-    assert blocked.count == 2
+    steered = controller.before_call("web_search", args)
+    assert steered.action == "steer"
+    assert steered.code == "repeated_exact_failure_steering"
+    assert steered.count == 2
+    assert not steered.allows_execution
+    assert steered.should_inject_steering
+
+    subsequent = controller.before_call("web_search", args)
+    assert subsequent.action == "steer"
+    assert subsequent.code == "repeated_exact_failure_steering"
+    assert not subsequent.allows_execution
 
 
 def test_success_resets_exact_signature_failure_streak():
@@ -155,19 +166,16 @@ def test_same_tool_varying_args_warns_by_default_without_halting():
     first = controller.after_call("terminal", {"command": "cmd-1"}, '{"exit_code":1}', failed=True)
     second = controller.after_call("terminal", {"command": "cmd-2"}, '{"exit_code":1}', failed=True)
     third = controller.after_call("terminal", {"command": "cmd-3"}, '{"exit_code":1}', failed=True)
+
     fourth = controller.after_call("terminal", {"command": "cmd-4"}, '{"exit_code":1}', failed=True)
 
     assert first.action == "allow"
     assert [second.action, third.action, fourth.action] == ["warn", "warn", "warn"]
     assert {second.code, third.code, fourth.code} == {"same_tool_failure_warning"}
-    assert "Do not switch to text-only replies" in second.message
-    assert "keep using tools" in second.message
-    assert "diagnose before retrying" in second.message
-    assert "different tool" in second.message
-    assert controller.halt_decision is None
-
-
-def test_hard_stop_enabled_halts_same_tool_varying_args_failure_streak():
+    assert "Do not call it again" in second.message
+    assert "correct the specific error" in second.message
+    assert "complete read_file/write_file/patch" in second.message
+def test_hard_stop_enabled_warns_same_tool_varying_args_failure_streak():
     controller = ToolCallGuardrailController(
         ToolCallGuardrailConfig(
             hard_stop_enabled=True,
@@ -183,29 +191,32 @@ def test_hard_stop_enabled_halts_same_tool_varying_args_failure_streak():
     assert second.action == "warn"
     assert second.code == "same_tool_failure_warning"
     third = controller.after_call("terminal", {"command": "cmd-3"}, '{"exit_code":1}', failed=True)
-    assert third.action == "halt"
-    assert third.code == "same_tool_failure_halt"
+    assert third.action == "warn"  # Still warns, never halts
+    assert third.code == "same_tool_failure_warning"
     assert third.count == 3
 
 
-def test_idempotent_no_progress_repeated_result_warns_without_blocking_by_default():
+def test_idempotent_no_progress_repeated_result_warns_then_steers_by_default():
     controller = ToolCallGuardrailController(
         ToolCallGuardrailConfig(no_progress_warn_after=2, no_progress_block_after=2)
     )
     args = {"path": "/tmp/same.txt"}
     result = "same file contents"
 
-    for _ in range(4):
-        assert controller.before_call("read_file", args).action == "allow"
-        decision = controller.after_call("read_file", args, result, failed=False)
+    assert controller.before_call("read_file", args).action == "allow"
+    assert controller.after_call("read_file", args, result, failed=False).action == "allow"
+    assert controller.before_call("read_file", args).action == "allow"
+    decision = controller.after_call("read_file", args, result, failed=False)
 
     assert decision.action == "warn"
     assert decision.code == "idempotent_no_progress_warning"
-    assert controller.before_call("read_file", args).action == "allow"
-    assert controller.halt_decision is None
+    steered = controller.before_call("read_file", args)
+    assert steered.action == "steer"
+    assert steered.code == "idempotent_no_progress_steering"
+    assert not steered.allows_execution
 
 
-def test_hard_stop_enabled_blocks_idempotent_no_progress_future_repeat():
+def test_legacy_hard_stop_config_steers_idempotent_no_progress_future_repeat():
     controller = ToolCallGuardrailController(
         ToolCallGuardrailConfig(
             hard_stop_enabled=True,
@@ -223,9 +234,29 @@ def test_hard_stop_enabled_blocks_idempotent_no_progress_future_repeat():
     assert warn.action == "warn"
     assert warn.code == "idempotent_no_progress_warning"
 
-    blocked = controller.before_call("read_file", args)
-    assert blocked.action == "block"
-    assert blocked.code == "idempotent_no_progress_block"
+    steered = controller.before_call("read_file", args)
+    assert steered.action == "steer"
+    assert steered.code == "idempotent_no_progress_steering"
+    assert not steered.allows_execution
+    assert steered.should_inject_steering
+
+    subsequent = controller.before_call("read_file", args)
+    assert subsequent.action == "steer"
+    assert subsequent.code == "idempotent_no_progress_steering"
+    assert not subsequent.allows_execution
+
+
+def test_recovery_hints_keep_tool_work_internal_and_actionable():
+    terminal = _tool_failure_recovery_hint("terminal", 5)
+    cronjob = _tool_failure_recovery_hint("cronjob", 5)
+    read_file = _tool_failure_recovery_hint("read_file", 5)
+
+    assert "pwd && ls -la" in terminal
+    assert "complete required arguments" in cronjob
+    assert "complete required arguments" in read_file
+    for hint in (terminal, cronjob, read_file):
+        assert "Do not call it again" in hint
+        assert "correct the specific error" in hint
 
 
 def test_mutating_or_unknown_tools_are_not_blocked_for_repeated_identical_success_output_by_default():
@@ -249,10 +280,82 @@ def test_reset_for_turn_clears_bounded_guardrail_state():
     controller.after_call("read_file", {"path": "/tmp/x"}, "same", failed=False)
     controller.after_call("read_file", {"path": "/tmp/x"}, "same", failed=False)
 
-    assert controller.before_call("web_search", {"query": "same"}).action == "block"
-    assert controller.before_call("read_file", {"path": "/tmp/x"}).action == "block"
+    # After 2 failures, first attempt triggers steering
+    assert controller.before_call("web_search", {"query": "same"}).action == "steer"
+    assert controller.before_call("read_file", {"path": "/tmp/x"}).action == "steer"
 
     controller.reset_for_turn()
 
     assert controller.before_call("web_search", {"query": "same"}).action == "allow"
     assert controller.before_call("read_file", {"path": "/tmp/x"}).action == "allow"
+
+
+def test_build_system_reminder_privately_steers_without_failure_counts():
+    reminder = _build_system_reminder("cronjob", 5, "steer")
+
+    assert reminder["role"] == "user"
+    assert "<system-reminder>" in reminder["content"]
+    assert "</system-reminder>" in reminder["content"]
+    assert "TOOL RECOVERY REQUIRED" in reminder["content"]
+    assert "Take ONE materially different valid action" in reminder["content"]
+    assert "cronjob` 5" not in reminder["content"]
+    assert "times" not in reminder["content"]
+
+
+def test_default_guardrail_blocks_repeated_failure_without_hard_stop():
+    controller = ToolCallGuardrailController()
+    args = {"query": "same"}
+
+    controller.after_call("web_search", args, '{"error":"boom"}', failed=True)
+    controller.after_call("web_search", args, '{"error":"boom"}', failed=True)
+    decision = controller.before_call("web_search", args)
+
+    assert decision.action == "steer"
+    assert decision.allows_execution is False
+    assert decision.should_inject_steering is True
+
+
+def test_steering_injection_blocks_execution_but_marks_for_reminder():
+    controller = ToolCallGuardrailController(
+        ToolCallGuardrailConfig(
+            hard_stop_enabled=True,
+            exact_failure_block_after=2,
+        )
+    )
+    args = {"query": "same"}
+
+    # First two failures
+    controller.after_call("web_search", args, '{"error":"boom"}', failed=True)
+    controller.after_call("web_search", args, '{"error":"boom"}', failed=True)
+
+    # Third attempt is rejected and returns private steering guidance.
+    decision = controller.before_call("web_search", args)
+    assert decision.action == "steer"
+    assert decision.should_inject_steering is True
+    assert decision.allows_execution is False
+    assert not hasattr(decision, "should_halt")
+
+
+def test_no_progress_idempotent_tool_keeps_steering_after_repeated_result():
+    controller = ToolCallGuardrailController(
+        ToolCallGuardrailConfig(
+            hard_stop_enabled=True,
+            no_progress_block_after=2,
+            idempotent_tools=["read_file"],
+        )
+    )
+    args = {"path": "/tmp/x"}
+
+    # First two identical results
+    controller.after_call("read_file", args, "same content", failed=False)
+    controller.after_call("read_file", args, "same content", failed=False)
+
+    # Third attempt triggers steering
+    steered = controller.before_call("read_file", args)
+    assert steered.action == "steer"
+    assert steered.code == "idempotent_no_progress_steering"
+    assert steered.should_inject_steering is True
+
+    subsequent = controller.before_call("read_file", args)
+    assert subsequent.action == "steer"
+    assert not subsequent.allows_execution
