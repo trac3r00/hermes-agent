@@ -1,0 +1,38 @@
+name: QA (self-hosted PVE)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qa:
+    name: 테스트 및 정적검사
+    runs-on: [self-hosted, pve, vm101]
+    timeout-minutes: 30
+    steps:
+      - name: 소스 체크아웃
+        uses: actions/checkout@v4
+
+      - name: 파이썬 환경 준비
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install -q --upgrade pip
+          .venv/bin/python -m pip install -q -e '.[dev]' || .venv/bin/python -m pip install -q -e .
+
+      - name: 문법 검사
+        run: .venv/bin/python -m compileall -q hermes_cli agent tools
+
+      - name: 정적 검사 (ruff)
+        continue-on-error: true
+        run: |
+          .venv/bin/python -m pip install -q ruff
+          .venv/bin/ruff check . --output-format=github
+
+      - name: 단위 테스트 (pytest)
+        run: .venv/bin/python -m pytest -q -x --timeout=120 2>&1 | tail -40
