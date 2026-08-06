@@ -35,4 +35,7 @@ jobs:
           .venv/bin/ruff check . --output-format=github
 
       - name: 단위 테스트 (pytest)
-        run: .venv/bin/python -m pytest -q -x --timeout=120 2>&1 | tail -40
+        run: |
+          set -o pipefail
+          .venv/bin/python -m pip install -q pytest pytest-timeout
+          .venv/bin/python -m pytest -q --timeout=120 2>&1 | tail -60
