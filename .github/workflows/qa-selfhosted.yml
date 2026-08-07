@@ -1,8 +1,8 @@
 name: QA (self-hosted PVE)
 
-# 이 저장소 컨벤션: 개별 워크플로는 자체 push/pull_request 트리거를 갖지 않고
-# ci.yml 오케스트레이터가 workflow_call 로 호출한다. 수동 확인용으로
-# workflow_dispatch 만 별도 유지한다.
+# Repo convention: individual workflows do not declare their own push /
+# pull_request triggers. The ci.yml orchestrator invokes them via
+# workflow_call. workflow_dispatch is kept for manual verification runs.
 on:
   workflow_call:
   workflow_dispatch:
@@ -13,30 +13,30 @@ concurrency:
 
 jobs:
   qa:
-    name: 테스트 및 정적검사
+    name: Tests and static checks
     runs-on: [self-hosted, pve, vm101]
     timeout-minutes: 30
     steps:
-      - name: 소스 체크아웃
+      - name: Check out source
         uses: actions/checkout@v4
 
-      - name: 파이썬 환경 준비
+      - name: Set up Python environment
         run: |
           python3 -m venv .venv
           .venv/bin/python -m pip install -q --upgrade pip
-          # 테스트 수집에 messaging(aiohttp.test_utils), acp extras가 필요함
+          # Test collection needs the messaging (aiohttp.test_utils) and acp extras.
           .venv/bin/python -m pip install -q -e '.[dev,messaging,acp]' || .venv/bin/python -m pip install -q -e '.[dev]'
 
-      - name: 문법 검사
+      - name: Syntax check
         run: .venv/bin/python -m compileall -q hermes_cli agent tools
 
-      - name: 정적 검사 (ruff)
+      - name: Lint (ruff)
         continue-on-error: true
         run: |
           .venv/bin/python -m pip install -q ruff
           .venv/bin/ruff check . --output-format=github
 
-      - name: 단위 테스트 (pytest)
+      - name: Unit tests (pytest)
         run: |
           set -o pipefail
           .venv/bin/python -m pip install -q pytest pytest-timeout

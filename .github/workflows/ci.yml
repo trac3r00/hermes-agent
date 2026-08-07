@@ -99,16 +99,16 @@ jobs:
     needs: detect
     uses: ./.github/workflows/uv-lockfile-check.yml
 
-  # 자급(self-hosted) PVE 러너에서 도는 QA. 파이썬 변경이 있을 때만 실행한다.
+  # QA on the self-hosted PVE runner. Only runs when Python files changed.
   qa-selfhosted:
-    name: QA (자급 러너)
+    name: QA (self-hosted runner)
     needs: detect
     if: needs.detect.outputs.python == 'true'
     uses: ./.github/workflows/qa-selfhosted.yml
 
-  # senpi 자동 코드리뷰. PR 이벤트일 때만 실행한다.
+  # Automated senpi code review. PR events only.
   senpi-review:
-    name: senpi 코드리뷰
+    name: senpi code review
     needs: detect
     if: needs.detect.outputs.event_name == 'pull_request'
     permissions:
@@ -162,7 +162,8 @@ jobs:
       - contributor-check
       - uv-lockfile
       - qa-selfhosted
-      # senpi-review 는 자문 성격이라 게이트에 넣지 않는다 (병합 차단 금지).
+      # senpi-review is advisory and intentionally excluded from the gate so it
+      # can never block a merge.
       - docker-lint
       - supply-chain
       - osv-scanner
