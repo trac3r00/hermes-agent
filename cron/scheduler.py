@@ -87,13 +87,116 @@ def _set_cron_session_title(session_db, session_id, base_title):
         return deduped
 
 
+_CRON_RAW_DIAGNOSTIC_RE = re.compile(
+    r"(?im)(?:^|\n)\s*(?:traceback|stderr:|stdout:|file \"|script exited with code)"
+)
+_CRON_LOW_VALUE_SUCCESS = (
+    "all clear",
+    "all green",
+    "no action needed",
+    "no action required",
+    "no issues",
+    "nothing to report",
+)
+_CRON_KO_COMPACT_INSTRUCTIONS = (
+    "형님에게 보낼 예약 작업 알림을 한국어로 다시 쓰세요. "
+    "첫 줄에 무엇이 일어났는지 한 문장. 필요하면 2~5줄로 구체 내역. "
+    "원문·스택트레이스·stderr/stdout·비밀·내부 경로·job_id·영어 상태코드"
+    "(NO SIGNAL, OK, FAIL, IMPACT, CAUSE)는 넣지 마세요. "
+    "고유명사·링크·숫자만 영어 그대로. 추임새 없이 정보부터. "
+    "다른 설명 없이 최종 메시지만 출력하세요."
+)
+
+
+def _cron_delivery_policy() -> tuple[str, bool]:
+    """Return (delivery_language, compact) from cron config."""
+    try:
+        cron_cfg = (load_config() or {}).get("cron") or {}
+    except Exception:
+        cron_cfg = {}
+    language = str(cron_cfg.get("delivery_language") or "").strip().lower()
+    compact = bool(cron_cfg.get("compact_delivery", False)) or language in {
+        "ko",
+        "kr",
+        "korean",
+    }
+    return language, compact
+
+
+def _cron_text_has_hangul(text: str) -> bool:
+    return any("가" <= ch <= "힣" for ch in text)
+
+
+def _is_low_value_no_agent_success(job: dict, content: str) -> bool:
+    if not job.get("no_agent"):
+        return False
+    lowered = content.strip().lower()
+    return any(phrase in lowered for phrase in _CRON_LOW_VALUE_SUCCESS)
+
+
+def _cron_needs_compact(content: str) -> bool:
+    text = (content or "").strip()
+    if not text:
+        return False
+    if _CRON_RAW_DIAGNOSTIC_RE.search(text):
+        return True
+    if len(text) > 500:
+        return True
+    if "Cronjob Response:" in text or "job_id:" in text:
+        return True
+    latin = sum(1 for ch in text if "a" <= ch.lower() <= "z")
+    return latin >= 4 and not _cron_text_has_hangul(text)
+
+
+def _korean_cron_fallback(job: dict, *, failure: bool) -> str:
+    job_name = job.get("name") or job.get("id") or "예약 작업"
+    if failure:
+        return (
+            f"⚠️ {job_name} 실행에 실패했습니다.\n\n"
+            "주기적으로 돌아가는 감시기입니다. 자세한 내용은 로그에 있습니다."
+        )
+    return f"{job_name}에서 확인할 내용이 있습니다. 자세한 내용은 로그를 봐 주세요."
+
+
+def _summarize_cron_text_for_delivery(job: dict, text: str, *, failure: bool) -> str:
+    raw = (text or "").strip()
+    try:
+        from agent.oneshot import run_oneshot
+        from agent.redact import redact_sensitive_text
+
+        summary = run_oneshot(
+            instructions=_CRON_KO_COMPACT_INSTRUCTIONS,
+            user_input=redact_sensitive_text(raw[:2000]),
+            task="title_generation",
+            max_tokens=320,
+            temperature=0.1,
+            timeout=30.0,
+        )
+    except Exception:
+        logger.exception("Job '%s': cron delivery summarization failed", job.get("id"))
+        return _korean_cron_fallback(job, failure=failure)
+    try:
+        from agent.redact import redact_sensitive_text
+
+        cleaned = redact_sensitive_text(str(summary or "").strip())
+    except Exception:
+        cleaned = str(summary or "").strip()
+    if not cleaned or _CRON_RAW_DIAGNOSTIC_RE.search(cleaned) or not _cron_text_has_hangul(cleaned):
+        return _korean_cron_fallback(job, failure=failure)
+    return cleaned
+
+
 def _summarize_cron_failure_for_delivery(job: dict, error: str | None) -> str:
-    """Return a compact one-line failure message for chat delivery.
+    """Return a compact failure message for chat delivery.
 
     Full details stay in the cron output directory and the logs. Chat should
     show the operator what broke without dumping provider JSON, retry noise, or
     stack traces into the delivery channel.
     """
+    _, compact = _cron_delivery_policy()
+    if compact:
+        return _summarize_cron_text_for_delivery(job, error or "", failure=True)
+
     job_name = job.get("name") or job.get("id") or "cron job"
     text = (error or "unknown error").strip()
     lower = text.lower()
@@ -138,6 +241,23 @@ def _summarize_cron_failure_for_delivery(job: dict, error: str | None) -> str:
     if len(cleaned) > 180:
         cleaned = cleaned[:177].rstrip() + "..."
     return f"⚠️ Cron '{job_name}' failed: {cleaned}"
+
+
+def _prepare_cron_delivery_content(job: dict, content: str, *, success: bool) -> str:
+    """Compact raw/English cron output before it hits Slack or chat."""
+    text = (content or "").strip()
+    if not text:
+        return ""
+    if success and _is_low_value_no_agent_success(job, text):
+        return ""
+    _, compact = _cron_delivery_policy()
+    if not compact:
+        return text if success else _summarize_cron_failure_for_delivery(job, text)
+    if not success:
+        return _summarize_cron_text_for_delivery(job, text, failure=True)
+    if _cron_needs_compact(text):
+        return _summarize_cron_text_for_delivery(job, text, failure=False)
+    return text
 
 
 class CronPromptInjectionBlocked(Exception):
@@ -3964,7 +4084,11 @@ def run_one_job(job: dict, *, adapters=None, loop=None, verbose: bool = False) -
             # Deliver the final response to the origin/target chat.
             # If the agent responded with [SILENT], skip delivery (but
             # output is already saved above).  Failed jobs always deliver.
-            deliver_content = final_response if success else _summarize_cron_failure_for_delivery(job, error)
+            deliver_content = _prepare_cron_delivery_content(
+                job,
+                final_response if success else (error or ""),
+                success=success,
+            )
             # Treat whitespace-only final responses the same as empty
             # responses: do not deliver a blank message, and let the
             # empty-response guard below mark the run as a soft failure.
