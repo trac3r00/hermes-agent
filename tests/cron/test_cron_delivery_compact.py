@@ -44,6 +44,16 @@ def test_prepare_low_value_no_agent_is_silent():
         assert sched._prepare_cron_delivery_content(job, "All clear - no action needed", success=True) == ""
 
 
+def test_prepare_failure_uses_korean_fallback_when_llm_blank():
+    job = {"id": "j6", "name": "quality-fail-closed", "no_agent": True}
+    with patch.object(sched, "_cron_delivery_policy", return_value=("ko", True)), patch(
+        "agent.oneshot.run_oneshot", return_value=""
+    ):
+        out = sched._summarize_cron_text_for_delivery(job, "stdout:\nRAW_FAILURE_SENTINEL", failure=True)
+    assert "RAW_FAILURE_SENTINEL" not in out
+    assert "실패" in out
+
+
 def test_english_fallback_unchanged_when_compact_off():
     job = {"id": "j5", "name": "quality-failure"}
     with patch.object(sched, "_cron_delivery_policy", return_value=("", False)):
