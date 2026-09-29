@@ -2,3 +2,41 @@
 376ec8ee2332398d7d9442a23998038ce01aeff0:tests/run_agent/test_text_tool_call_runtime.py:generic-api-key:30
 # Placeholder test API key ("test-key-1234567890") in an upstream fixture carried by the cron-ko-compact branch history; file no longer exists at HEAD.
 63954d508c91e2e05f1d5b3f94dbea62c957e7c3:tests/run_agent/test_dropped_tool_call_recovery.py:generic-api-key:38
+
+# Upstream history carried by the cron-ko-compact branch (plus one fork-main test commit).
+# Each finding below was reviewed individually and none is a real credential:
+# test placeholders ("test-key-1234567890", "sk-plain-1234", "sk-abc123def456ghi789jklmno",
+# "sk-proj-Zz1234...", "sk-*-12345678", "val"/"val2"), the public jwt.io example token and a
+# truncated "eyJ...abc123.xyz" redaction fixture, example Discord snowflake IDs in tests/docs,
+# vendored sqlite3ext.h symbol names, a code identifier in tui_gateway/server.py, and a model
+# name in tests/test_hermes_constants.py. Exact fingerprints only; no path or rule is ignored.
+0583692c2d7ccc746893151f45796d5073a289d4:tests/hermes_cli/test_xiaomi_provider.py:generic-api-key:142
+0583692c2d7ccc746893151f45796d5073a289d4:tests/hermes_cli/test_xiaomi_provider.py:generic-api-key:191
+0e04d14209d944a3e99aa3ae934628f3048257c7:tests/agent/test_trace_upload.py:generic-api-key:106
+0e04d14209d944a3e99aa3ae934628f3048257c7:tests/agent/test_trace_upload.py:generic-api-key:74
+0e04d14209d944a3e99aa3ae934628f3048257c7:tests/agent/test_trace_upload.py:generic-api-key:84
+164bca658ee5f375ce53cd6217b1ddbdfdd0721a:tests/gateway/test_api_server_bind_guard.py:generic-api-key:165
+1c2faedd88392f93fbb64e9410bc25f2f095511f:tests/run_agent/test_post_tool_compression_attempt_cap.py:generic-api-key:103
+241bc112e85e22c4d6410e5659ecacc546ef6708:tests/gateway/test_discord_plugin_setup.py:discord-client-id:47
+241bc112e85e22c4d6410e5659ecacc546ef6708:tests/gateway/test_discord_plugin_setup.py:discord-client-id:80
+271a9d8ec6ada347375921a7995001b35ad89954:tests/run_agent/test_tool_batch_segmentation.py:generic-api-key:226
+5e50f18b3041067b42af7b9a5a6778d55e93fdfb:tests/run_agent/test_malformed_tool_arguments.py:generic-api-key:30
+60391d0eef1fb96b6c3ea94531576874d67b09b1:tests/run_agent/test_plugin_context_engine_init.py:generic-api-key:148
+6fba7819456412256d433e00e7a108133c71c9b8:tests/hermes_cli/test_config.py:generic-api-key:1084
+7cb2d2cd4acf0c452349968ce8d90908e8fb4cd9:tests/hermes_cli/test_auth_provider_gate.py:generic-api-key:187
+7e3acd02d925b25fcf5fb5afd0076954bb6fc769:tests/hermes_cli/test_memory_setup.py:generic-api-key:231
+7e3acd02d925b25fcf5fb5afd0076954bb6fc769:tests/hermes_cli/test_memory_setup.py:generic-api-key:232
+901650bbfb09d4c5556bdec7a83bd28e45811e40:tests/run_agent/test_run_agent.py:generic-api-key:1481
+9284a3402f64c85b3e43cb08356b96d6fb8c23c3:tui_gateway/server.py:generic-api-key:15485
+9e872db7d7eae9b962afc094a55a484890558a6b:tests/agent/test_redact.py:generic-api-key:155
+acfefa4fdacc8dfc16aed3766c1f7e2db8eda76b:tests/hermes_cli/test_sessions_export_md_cli.py:generic-api-key:474
+d9cdb81923e4953a9a80129c3df08accb60978d7:tests/test_hermes_constants.py:generic-api-key:577
+db9e3e4ef96bd293ea52af72a94b60556724d3dd:website/docs/user-guide/messaging/discord.md:discord-client-id:750
+eebc2286fcdf7339653d130dd7914c295f8d7c2c:tests/run_agent/test_compression_lock_defer.py:generic-api-key:99
+f13f845116941ac5616e8df3294f3379a3efeb20:native/fts5_cjk/vendor/sqlite3ext.h:generic-api-key:418
+f13f845116941ac5616e8df3294f3379a3efeb20:native/fts5_cjk/vendor/sqlite3ext.h:generic-api-key:574
+f13f845116941ac5616e8df3294f3379a3efeb20:native/fts5_cjk/vendor/sqlite3ext.h:generic-api-key:666
+f7b90e6f80dd1fe451e8fe309b7aca9650f39753:tests/run_agent/test_moa_privacy_filter.py:jwt:44
+f944e848582f819fc66ee4d893b2c9c8b1feb2d7:tests/run_agent/test_per_model_threshold_init_ordering.py:generic-api-key:111
+f944e848582f819fc66ee4d893b2c9c8b1feb2d7:tests/run_agent/test_per_model_threshold_init_ordering.py:generic-api-key:73
+fa4800414cf7d6d28a535315a67858bfd6e30db3:tests/run_agent/test_proactive_prune_loop_wiring.py:generic-api-key:101
