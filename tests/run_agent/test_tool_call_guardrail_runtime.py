@@ -5,6 +5,7 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from agent.tool_guardrails import _build_system_reminder, _tool_failure_recovery_hint
 from run_agent import AIAgent
 
 
@@ -138,9 +139,7 @@ def test_legacy_hard_stop_config_rejects_repeated_call_and_injects_private_steer
     assert "tool_guardrail_rejected" in rejected_content
     assert "repeated_exact_failure_steering" in rejected_content
     assert "materially different valid action" in rejected_content
-    assert messages[1]["role"] == "user"
-    assert "<system-reminder>" in messages[1]["content"]
-    assert "TOOL RECOVERY REQUIRED" in messages[1]["content"]
+    assert messages[1] == _build_system_reminder("web_search", 2, "steer")
 
 
 def test_sequential_after_call_appends_guidance_to_tool_result_without_extra_messages():
@@ -183,12 +182,10 @@ def test_same_tool_failure_warning_tells_model_to_recover_with_tools():
         agent._execute_tool_calls_sequential(msg, messages, "task-1")
 
     content = messages[0]["content"]
-    assert "same_tool_failure_warning" in content
-    assert "Do not call it again until you can correct the specific error" in content
-    assert "different valid tool call" in content
-    assert "pwd && ls -la" in content
-    assert "read_file/write_file/patch" in content
-    assert "report the concrete blocker" in content
+    assert content.endswith(
+        "same_tool_failure_warning; count=3; "
+        f"{_tool_failure_recovery_hint('terminal', 3)}]"
+    )
 
 
 def test_legacy_hard_stop_config_concurrent_path_rejects_bad_call_and_runs_valid_one():
@@ -223,9 +220,7 @@ def test_legacy_hard_stop_config_concurrent_path_rejects_bad_call_and_runs_valid
     assert "tool_guardrail_rejected" in rejected_content
     assert "repeated_exact_failure_steering" in rejected_content
     assert json.loads(tool_messages[1]["content"]) == {"ok": "allowed"}
-    assert len(reminders) == 1
-    assert "<system-reminder>" in reminders[0]["content"]
-    assert "TOOL RECOVERY REQUIRED" in reminders[0]["content"]
+    assert reminders == [_build_system_reminder("web_search", 2, "steer")]
     assert starts == [("c-allow", "web_search", allowed_args)]
     started_events = [event for event in progress_events if event[0] == "tool.started"]
     completed_events = [event for event in progress_events if event[0] == "tool.completed"]
