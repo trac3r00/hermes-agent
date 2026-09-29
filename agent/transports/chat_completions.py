@@ -678,6 +678,15 @@ class ChatCompletionsTransport(ProviderTransport):
         # loop's refusal handler surfaces it clearly and stops. ``refusal`` is
         # ``None`` for normal responses, so this is a no-op in the common case.
         content = msg.content
+        text_tool_call_protocol = kwargs.get("text_tool_call_protocol")
+        if text_tool_call_protocol is not None and not tool_calls:
+            from agent.text_tool_call_parser import parse_text_tool_calls
+
+            text_tool_calls = parse_text_tool_calls(content, text_tool_call_protocol)
+            if text_tool_calls:
+                tool_calls = text_tool_calls
+                content = None
+                finish_reason = "tool_calls"
         refusal = getattr(msg, "refusal", None)
         if refusal is None and hasattr(msg, "model_extra"):
             _msg_extra = getattr(msg, "model_extra", None) or {}
