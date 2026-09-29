@@ -93,6 +93,11 @@ class ProviderProfile:
     )
     # empty = use main model
 
+    # ── Textual tool calls (opt-in) ──────────────────────────
+    # Lower-cased model id (or "*" for the provider default) mapped to a
+    # TextToolCallProtocol value, for models that emit tool calls as text.
+    text_tool_call_protocols: dict[str, str] = field(default_factory=dict)
+
     # ── Hooks (override in subclass for complex providers) ───
 
     def get_hostname(self) -> str:
