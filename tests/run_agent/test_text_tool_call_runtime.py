@@ -27,7 +27,7 @@ def _make_agent() -> AIAgent:
         patch("run_agent.OpenAI"),
     ):
         agent = AIAgent(
-            api_key="test-key-1234567890",
+            api_key="dummy",
             base_url="https://openrouter.ai/api/v1",
             max_iterations=5,
             quiet_mode=True,
