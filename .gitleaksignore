@@ -5,9 +5,8 @@
 
 # Upstream history carried by the cron-ko-compact branch (plus one fork-main test commit).
 # Each finding below was reviewed individually and none is a real credential:
-# test placeholders ("test-key-1234567890", "sk-plain-1234", "sk-abc123def456ghi789jklmno",
-# "sk-proj-Zz1234...", "sk-*-12345678", "val"/"val2"), the public jwt.io example token and a
-# truncated "eyJ...abc123.xyz" redaction fixture, example Discord snowflake IDs in tests/docs,
+# obvious fake API-key placeholders in test fixtures, the public jwt.io example token and a
+# truncated JWT redaction fixture, example Discord snowflake IDs in tests/docs,
 # vendored sqlite3ext.h symbol names, a code identifier in tui_gateway/server.py, and a model
 # name in tests/test_hermes_constants.py. Exact fingerprints only; no path or rule is ignored.
 0583692c2d7ccc746893151f45796d5073a289d4:tests/hermes_cli/test_xiaomi_provider.py:generic-api-key:142
@@ -40,3 +39,5 @@ f7b90e6f80dd1fe451e8fe309b7aca9650f39753:tests/run_agent/test_moa_privacy_filter
 f944e848582f819fc66ee4d893b2c9c8b1feb2d7:tests/run_agent/test_per_model_threshold_init_ordering.py:generic-api-key:111
 f944e848582f819fc66ee4d893b2c9c8b1feb2d7:tests/run_agent/test_per_model_threshold_init_ordering.py:generic-api-key:73
 fa4800414cf7d6d28a535315a67858bfd6e30db3:tests/run_agent/test_proactive_prune_loop_wiring.py:generic-api-key:101
+# 2def3162e1 quoted placeholder strings in the comment above; that comment was reworded since.
+2def3162e1c039db3a55588b8fcf9307f73ae86a:.gitleaksignore:generic-api-key:8
