@@ -24,18 +24,43 @@ def test_prepare_success_compacts_raw_english():
     assert "promotional" not in out
 
 
-def test_prepare_failure_never_returns_traceback():
+def test_prepare_failure_drops_summary_that_echoes_traceback():
     job = {"id": "j3", "name": "quality-failure", "no_agent": True}
     raw = "Script exited with code 1\nstderr:\nTraceback: RAW_FAILURE_SENTINEL"
-    with patch.object(sched, "_cron_delivery_policy", return_value=("ko", True)), patch.object(
-        sched,
-        "_summarize_cron_text_for_delivery",
-        return_value="⚠️ quality-failure 실행에 실패했습니다.\n\n주기적으로 돌아가는 감시기입니다.",
+    with patch.object(sched, "_cron_delivery_policy", return_value=("ko", True)), patch(
+        "agent.oneshot.run_oneshot", return_value="실패\nTraceback: RAW_FAILURE_SENTINEL"
     ):
         out = sched._prepare_cron_delivery_content(job, raw, success=False)
     assert "RAW_FAILURE_SENTINEL" not in out
     assert "Traceback" not in out
-    assert "실패" in out
+    assert "quality-failure 실행에 실패" in out
+
+
+def test_prepare_failure_delivers_korean_summary():
+    job = {"id": "j3b", "name": "quality-failure", "no_agent": True}
+    with patch.object(sched, "_cron_delivery_policy", return_value=("ko", True)), patch(
+        "agent.oneshot.run_oneshot", return_value="품질 검사가 실패했습니다."
+    ):
+        out = sched._prepare_cron_delivery_content(job, "boom", success=False)
+    assert out == "품질 검사가 실패했습니다."
+
+
+def test_summarizer_input_is_redacted_even_when_global_redaction_off(monkeypatch):
+    import agent.redact as redact
+
+    monkeypatch.setattr(redact, "_REDACT_ENABLED", False)
+    key = "sk-proj-" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6"
+    seen = {}
+
+    def fake_oneshot(**kw):
+        seen["input"] = kw["user_input"]
+        return "요약"
+
+    with patch("agent.oneshot.run_oneshot", side_effect=fake_oneshot):
+        sched._summarize_cron_text_for_delivery(
+            {"id": "j10"}, f"OPENAI_API_KEY={key} failed", failure=True
+        )
+    assert key not in seen["input"]
 
 
 def test_prepare_low_value_no_agent_is_silent():
@@ -46,9 +71,7 @@ def test_prepare_low_value_no_agent_is_silent():
 
 def test_prepare_failure_uses_korean_fallback_when_llm_blank():
     job = {"id": "j6", "name": "quality-fail-closed", "no_agent": True}
-    with patch.object(sched, "_cron_delivery_policy", return_value=("ko", True)), patch(
-        "agent.oneshot.run_oneshot", return_value=""
-    ):
+    with patch("agent.oneshot.run_oneshot", return_value=""):
         out = sched._summarize_cron_text_for_delivery(job, "stdout:\nRAW_FAILURE_SENTINEL", failure=True)
     assert "RAW_FAILURE_SENTINEL" not in out
     assert "실패" in out
@@ -72,8 +95,7 @@ def test_compact_off_failure_without_error_keeps_english_one_liner():
     job = {"id": "j8", "name": "quality-failure"}
     with patch.object(sched, "_cron_delivery_policy", return_value=("", False)):
         out = sched._prepare_cron_delivery_content(job, None, success=False)
-    assert out == sched._summarize_cron_failure_for_delivery(job, None)
-    assert out.strip()
+    assert out == "⚠️ Cron 'quality-failure' failed: unknown error"
 
 
 def test_compact_on_failure_without_error_skips_llm():

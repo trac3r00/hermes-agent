@@ -128,7 +128,7 @@ def _summarize_cron_text_for_delivery(job: dict, text: str | None, *, failure: b
 
         summary = run_oneshot(
             instructions=_CRON_KO_COMPACT_INSTRUCTIONS,
-            user_input=redact_sensitive_text(raw[:2000]),
+            user_input=redact_sensitive_text(raw[:2000], force=True),
             task="title_generation",
             max_tokens=320,
             temperature=0.1,
@@ -140,7 +140,7 @@ def _summarize_cron_text_for_delivery(job: dict, text: str | None, *, failure: b
     try:
         from agent.redact import redact_sensitive_text
 
-        cleaned = redact_sensitive_text(str(summary or "").strip())
+        cleaned = redact_sensitive_text(str(summary or "").strip(), force=True)
     except Exception:
         cleaned = str(summary or "").strip()
     if not cleaned or _CRON_RAW_DIAGNOSTIC_RE.search(cleaned) or not _cron_text_has_hangul(cleaned):
