@@ -1864,6 +1864,329 @@ AUTHOR_MAP = {
     "yosapol@jitrak.dev": "Eji4h",  # direct email match
     "kiljadn@gmail.com": "designnotdrum",  # PR #56480 salvage (toolset static-inference fix)
     "lavya@loom.local": "LavyaTandel",  # PR #57893 salvage local git identity (envelope-layout cache markers on tool/empty-assistant messages; #57845)
+    # Upstream (NousResearch/hermes-agent) contributors whose commits entered this fork's
+    # history through the upstream merge carried by the cron-ko-compact branch. Mappings
+    # copied from upstream scripts/releases/authors_legacy.py and contributors/emails/.
+    "1822947159@qq.com": "ljy-2000",  # PR #62204 adopted in #62290
+    "1torhan@protonmail.com": "uzaylisak",  # PR #29988 salvage (detect_local_server_type process-lifetime cache)
+    "2024104039@mails.szu.edu.cn": "pixel4039",  # PR #64420 salvage (streaming: retry zero-chunk streams)
+    "527711370@qq.com": "liuwei666888",
+    "601709253@qq.com": "SquabbyZ",  # PR #59682 salvage (in-container dashboard WS loopback host; #58993)
+    "840004959@qq.com": "simplast",
+    "Ahmett101@users.noreply.github.com": "Ahmett101",  # PR #59455 salvage (background-review: guard summarize against list-shaped tool responses; #59437)
+    "AlexFucuson9@users.noreply.github.com": "AlexFucuson9",  # PR #61347 salvage (agent: reapply provider headers after model switch; #61099)
+    "AndreasHiltner@users.noreply.github.com": "AndreasHiltner",  # PR #56854 salvage (gateway: route multiplex profile responses through the profile's own adapter — 53-site _adapter_for_source sweep)
+    "Burgunthy@users.noreply.github.com": "Burgunthy",  # PR #20096 salvage (gateway: profile-based routing for inbound messages)
+    "Jigoooo@users.noreply.github.com": "Jigoooo",  # PR #58474 salvage (auxiliary: fall back to token resolver when anthropic pool has no usable entry)
+    "KCAYAAI@users.noreply.github.com": "KCAYAAI",  # PR #62248 partial salvage (resume typing after clarify reply)
+    "RainbowAndSun@users.noreply.github.com": "RainbowAndSun",  # PR #62982 salvage (honcho: observer target in prefetch context)
+    "Regina@Andreys-Mini.true.true": "Rival",  # PR #64935/#64936 salvage (state: restore-boundary alternation repair; agent: turn-overlap tripwire)
+    "VrtxOmega@pm.me": "VrtxOmega",  # PR #43809 salvage (desktop: WSL folder-picker path bridge)
+    "a54983334@163.com": "Code-suphub",
+    "adrian@Adrians-MacBook-Pro.local": "alastraz",  # PR #41383 salvage (cua EAGAIN CLI-transport fallback)
+    "agungsubastian1963@gmail.com": "aguung",  # PR #64461 salvage (gateway: multiplex secret_scope for authz/Slack/webhooks)
+    "ahmet.tunc@gmail.com": "Ahmett101",  # PR #58445 salvage (profiles: allowlist default-export roots + preserve symlinks)
+    "alex@fireworks.ai": "alex-fireworks",  # PR #61182 salvage (Fireworks AI model-provider integration)
+    "allenliang2022@users.noreply.github.com": "allenliang2022",  # PR #56932 test coverage folded into #56909 salvage (408 → retryable timeout)
+    "antydizajn@gmail.com": "antydizajn",  # PR #36043 salvage (auxiliary: route custom:<name> through named-provider arm + Palantir Bearer auth)
+    "bassisho@Mac-mini-bassis.local": "hydracoco7",  # PR #61382 salvage (id-less cron job freeze)
+    "bigstar0920@gmail.com": "bigstar0920",
+    "bryan@users.noreply.github.com": "hydraxman",  # PR #62028 salvage (copilot xhigh) — regression-test commit authored under a bare-noreply local git identity; PR author is @hydraxman
+    "burke@autreymail.com": "bautrey",  # PR #66479 salvage (gateway reliability hardening: Bedrock liveness, supervised watchers, launchd respawn throttle)
+    "catbearlove1@gmail.com": "catbearlove1-lang",
+    "caztronics@yahoo.com": "doncazper",
+    "changhyun.min@gmail.com": "minchang",  # PR #42231 salvage (providers: add Upstage Solar)
+    "chenkun_lws@126.com": "bytesnail",  # PR #60360 salvage (--yolo startup ordering; #60328)
+    "codeforgenet@icloud.com": "CodeForgeNet",  # PR #47437 salvage (compact_rows blob skip)
+    "contato@siteup.com.br": "SiteupAgencia",  # PR #57435 salvage (tui_gateway: back off notification poller when session is busy; #55578)
+    "craigs.seller.sixx@gmail.com": "0-CYBERDYNE-SYSTEMS-0",  # PR #53966 salvage (session DB reads off event loop)
+    "declanbatesmith@outlook.com": "cat-thats-fat",  # PR #60489 (desktop: first-run remote connection option)
+    "derek2000139@qq.com": "derek2000139",  # PR #57838 salvage (desktop/windows: pre-write update marker before quit dwell so the renderer's waitForUpdateToFinish gate parks instead of respawning a backend that re-locks venv .pyd files mid-update)
+    "dfein38347g@users.noreply.github.com": "dfein38347g",
+    "dmabry@sparky.fabe-gray.ts.net": "dmabry",  # PR #63862 salvage (output-cap retry: use provider available_tokens + request estimate; exempt parseable vLLM/LM Studio errors from compression-disabled guard)
+    "doogie@spark.local": "SAMBAS123",  # PR #64986 salvage (gateway: multiplex primary bot token scope)
+    "dorokuma@users.noreply.github.com": "dorokuma",
+    "dr@nevernet.com": "davidrobertson",
+    "drexux0@gmail.com": "Drexuxux",  # PR #36042 salvage (gateway: /footer reachable mid-run via safe-toggle set)
+    "edder@example.com": "EdderTalmor",  # PR #41575 salvage (prompt-size: pass platform-resolved enabled_toolsets + agent.disabled_toolsets into the inspection agent; #41445)
+    "email@adambig.gs": "adambiggs",  # PR #43819 salvage (holographic shared SQLite connection)
+    "embwl0x@users.noreply.github.com": "embwl0x",  # PR #65105 salvage (gateway: preserve external supervisor ownership)
+    "emrekoca2003@gmail.com": "kocaemre",  # PR #36051 salvage (docs: audit round 3 code/doc reconciliation)
+    "enzo.eliott.adami@gmail.com": "enzo-adami",  # PR #66637 salvage (compression: preserve human intent and durable handoffs)
+    "esthon@gmail.com": "esthonjr",  # PR #61950 salvage (desktop: legacy non-git workspace grouping + Windows path identity)
+    "eva@100yen.org": "100yenadmin",
+    "evefromwayback@gmail.com": "evefromwayback",  # PR #64611 salvage (agent: never load install-tree AGENTS.md as project context)
+    "fanyang@microsoft.com": "fanyangCS",
+    "fburka@noidea.de": "flewe",  # PR #47755 salvage (mcp-oauth: configurable redirect_uri for proxied callbacks, e.g. Tailscale Funnel)
+    "fjlaowan@proton.me": "fjlaowan1983",  # PR #11256 salvage (honcho: reject whitespace-only reasoning queries)
+    "florian.rutishauser@outlook.com": "flo1t",
+    "focusedmiqa@gmail.com": "m1qaweb",  # PR #29290 salvage (gateway: strip /queue prefix when idle)
+    "gauravsaxena.jaipur@gmail.com": "gauravsaxena1997",  # PR #59868 partial salvage (agent: guard response.text against httpx.ResponseNotRead in _summarize_api_error; #59769)
+    "georgi@deepinfra.com": "ats3v",
+    "gn00742754@gmail.com": "SemonCat",  # PR #56786 salvage (Slack Agent View manifests and Assistant APIs)
+    "grace@weeb.onl": "evelynburger",  # PR #57544 salvage (gateway: webhook payload filters + route scripts; commit under unlinked identity)
+    "hellno@users.noreply.github.com": "hellno",
+    "hello@sahil-shubham.in": "sahil-shubham",  # PR #58448 salvage (whatsapp_cloud: honor documented WHATSAPP_CLOUD_ALLOWED_USERS / ALLOW_ALL_USERS in the DM intake gate)
+    "hello@tanmaychoudhary.com": "tanmayxchoudhary",
+    "hi@neueway.com": "brendandebeasi",
+    "hmirin@users.noreply.github.com": "hmirin",
+    "huajiang@tubi.tv": "thirstycrow",  # PR #23630 salvage (config-aware memory status labels)
+    "humphreysun98@gmail.com": "HumphreySun98",  # PR #61142 salvage (web: null web/backend config value guards)
+    "i@dex.moe": "dexhunter",  # PR #60339 salvage (skills snapshot manifest speedup)
+    "iamgexin@qq.com": "nullptr0807",  # PR #60956 salvage (gateway hygiene in-place compaction; #60947)
+    "iganapolsky@gmail.com": "IgorGanapolsky",  # PR #62125 salvage (compaction anti-thrash threshold verification)
+    "ignaciopastorsan@gmail.com": "IpastorSan",  # PR #63690 salvage (codex: rescue reasoning-only turns that die after 3 continuation attempts)
+    "ishengeqi@163.com": "isheng-eqi",  # PR #59428 salvage (cron: reject past one-shot timestamps in update_job fallback + resume_job; #59395). Also PR #59446 salvage (cron: advance one-shot next_run_at before dispatch so concurrent gateway+desktop schedulers can't double-execute; #59229).
+    "jake.long.vu@vucar.net": "jakelongvu-bot",  # PR #36683 partial salvage (approval: honor canonical approvals.timeout in gateway waits)
+    "jan@mg5.org": "mijanx",
+    "jashlee+microsoft@microsoft.com": "s905060",  # PR #57943 salvage (photon: auto-reinstall stale sidecar node_modules when lockfile is newer than npm's install marker; #59169)
+    "jdjiayou@163.com": "JiaDe-Wu",  # PR #34742 salvage (bedrock: bearer routing + streaming fallback + image decode; #28156)
+    "joelbrilliant1@gmail.com": "joelbrilliant",  # PR #58486 salvage (session-expiry cleanup must not end row as agent_close)
+    "johnmlussier@gmail.com": "John-Lussier",
+    "jonathan@mintrx.com": "JAlmanzarMint",  # PR #52688 salvage (vision: rasterize SVG / re-encode unsupported raster formats to PNG before embedding), folded into #57890
+    "jtstothard@gmail.com": "jtstothard",  # PR #63256 salvage (gateway: multiplex secondary adapter config validation)
+    "juniperbevensee@users.noreply.github.com": "juniperbevensee",
+    "kaishi00@users.noreply.github.com": "kaishi00",  # PR #55203 salvage (skip_preflight opt-out)
+    "kar.iskakov@gmail.com": "karfly",  # PR #64012 salvage (gateway: surface extended reasoning efforts)
+    "kimyeon30@naver.com": "rlaehddus302",  # PR #61985 salvage (gateway: secondary-adapter auth callback profile)
+    "koho.jung@outlook.com": "kohoj",  # PR #61667 salvage (nonce-CSP HTML session export)
+    "koshaji@gmail.com": "koshaji",  # PR #49832 salvage (OpenViking runtime autostart shutdown drain)
+    "krowd3v@users.noreply.github.com": "krowd3v",
+    "kshitij@kshitij.dev": "kshitijk4poor",
+    "lemonwan@users.noreply.github.com": "lemonwan",  # PR #59430 sibling salvage (adapter reconnect contract guard)
+    "li.long15@xydigit.com": "Alix-007",  # PR #54620 salvage (sms: bound Twilio webhook body reads)
+    "liuwei666888@users.noreply.github.com": "liuwei666888",
+    "lohinth25@proton.me": "l0h1nth",  # PR #32210 salvage (mattermost: accept leading-space slash commands from mobile clients; #25184)
+    "lord-dubious@users.noreply.github.com": "lord-dubious",  # PR #58453 salvage (preserve static custom provider models declared as dict rows)
+    "luigi@users.noreply.github.com": "Tortugasaur",  # PR #43205 salvage (desktop: profile-aware three-way approval mode statusbar control)
+    "luxuguangno1@163.com": "luxuguang-leo",  # PR #52966 + #52908 salvage (QQBot reconnect + Feishu Channel signaling)
+    "m.guttmann@journaway.com": "mguttmann",  # PR #63738 salvage (Anthropic setup-token pool auth normalization)
+    "maartendormenatteysen@hotmail.com": "MaartenDMT",  # PR #65637 salvage (gateway: retry failed transcript appends and rebuild corrupted FTS)
+    "marceloparra.hm@gmail.com": "marcelohildebrand",  # PR #42346 salvage (lmstudio: JIT load mode)
+    "me@roryford.com": "roryford",  # PR #63132 salvage (compression: fail closed for errors from a resolved lock API, preserving lineage)
+    "michaelmusser@users.noreply.github.com": "labsobsidian",  # PR #56699 salvage (MCP OAuth login connect_timeout floor)
+    "neo@neodeMac-mini.local": "neo-claw-bot",  # PR #58465 salvage (moa: drop empty user turns from advisory view)
+    "neoguyver@icloud.com": "neoguyverx",  # PR #60526 salvage (fail-closed write syntax gate; #60525)
+    "nima20002000@users.noreply.github.com": "nima20002000",  # PR #36022/#36025 salvage (code-exec truncation metadata; achievements hover loop)
+    "p.fabiszewski@gmail.com": "szafranski",  # PR #36020 (Telegram voice/audio duration)
+    "perkintahmaz50@gmail.com": "devatnull",  # PR #58704 salvage (whatsapp: native Baileys polls, clarify-as-poll, location pins, structured quoted replies, PTT/audio split, bridge_helpers extraction)
+    "peter.skaronis@techimpossible.com": "Peterskaronis",  # PR #63889 salvage (mcp-oauth: WAF-safe redirect_host for loopback callback URIs)
+    "pi@hermes.local": "Elektrofussel",  # PR #61675 salvage (honcho: defaultHost + private-range local URL detection)
+    "poowis2011@hotmail.com": "Umi4Life",  # PR #47377 salvage (agent: emit one-shot fallback switch notice on successful fallback so gateway users see model/provider change; #35419)
+    "qlskssk@gmail.com": "Soju06",  # agent turn-latency perf PRs
+    "rasitakyol@hotmail.com": "rasitakyol",
+    "robert@modern-minds.ai": "Hopfensaft",  # PR #31933 salvage (dashboard: align approvals.mode dropdown with canonical engine values)
+    "rodisoft1@gmail.com": "0disoft",  # PR #53511 salvage (gateway PID probe TTL cache)
+    "ronaldrj@gmail.com": "rarf",  # PR #56966 salvage (desktop chat model picker: hide implicitly discovered providers unless explicitly configured)
+    "root@vmi3351581.contaboserver.net": "ostravajih",  # PR #58374 salvage (poolside: coerce integer finish_reason and tool_call id to strings)
+    "roseycomanagement@roseyco.co.uk": "Roseyco-management",  # PR #63581 salvage (telegram: require getUpdates progress before polling is healthy; #63243, #63766)
+    "s96919@gmail.com": "s96919",
+    "sage@Sages-Mac-mini.local": "thestudionorth",  # PR #60015 salvage (mcp: parent-death watchdog for stdio children; commit under unlinked local identity)
+    "sam7894604@gmail.com": "sam7894604",  # PR #55803 salvage (discord: /reasoning slash choices)
+    "sberan@gmail.com": "sberan",  # PR #54494 salvage (--connect-timeout flag on hermes mcp add)
+    "sebastianlutycz@users.noreply.github.com": "sebastianlutycz",  # PR #39140 salvage (descendant CTE); bare noreply (no NNN+ prefix) needs explicit mapping
+    "setclock@Marins-Mac-mini.local": "setclock",  # PR #27052 salvage (MCP session-expired retry waits for a distinct fresh session)
+    "shuangxinniao@gmail.com": "shuangxinniao",
+    "skosarevivan@yandex.ru": "Epoxidex",  # PR #29820 salvage (ollama: top-level reasoning_effort=none; #25758)
+    "sonxi@nous.local": "17324393074",  # PR #53196 salvage (tools_config: known_plugin_toolsets null guard; commit under unlinked local identity)
+    "spiky02plateau@users.noreply.github.com": "spiky02plateau",  # PR #32824 salvage (usage: fetch Codex account limits from the credential pool in pool-only setups; superseded by #60028)
+    "stellarisw@users.noreply.github.com": "StellarisW",  # PR #66222 salvage (Discord WebSocket liveness + systemd watchdog; #26656 follow-up)
+    "taylorhp@gmail.com": "hwrdprkns",  # PR #36896 salvage (secrets: 1Password op:// secret source + shared _cache substrate, adapted onto the SecretSource interface)
+    "thatgfsj@gmail.com": "Thatgfsj",
+    "theoldwizard123@pm.me": "unsupportedpastels",
+    "thor753@foxmail.com": "wgd753",  # PR #59454 salvage (OpenViking trusted-mode retry matching)
+    "true@supersynergy.de": "Supersynergy",  # PR #59241 salvage (desktop: workspace path status-bar action)
+    "tturney1@gmail.com": "TheTom",  # PR #62696 salvage (gateway: expand @ context references under runtime/session model resolution)
+    "vadim.veroslavov@mail.ru": "veradim",  # PR #41201 salvage (Z.AI endpoint persist)
+    "vishal.dharm@gmail.com": "vishal-dharm",
+    "wafy.081107@gmail.com": "mahdiwafy",  # PR #60347 salvage (session messages pagination)
+    "wangzhe00zju@gmail.com": "flyingdoubleG",  # PR #18166 salvage (memory-provider tools honor disabled_toolsets in initial and MCP-refresh injection)
+    "waseemshahwan@users.noreply.github.com": "waseemshahwan",
+    "wei-yujie@qq.com": "DNAlec",  # PR #61743 salvage (honor reset policy in #54878 stale-heal recovery)
+    "williamumu@users.noreply.github.com": "williamumu",  # PR #31041 salvage (pairing: merge split legacy/new pairing store dirs at PairingStore init so approved users aren't re-prompted to pair)
+    "wilsonkinyuam@gmail.com": "WilsonKinyua",  # PR #62052 (tui: persist unflushed conversations on disconnect/restart)
+    "wyuebei@gmail.com": "wyuebei-cloud",  # PR #56640 salvage (hermes journey: replace GNU-only %-d strftime with dt.day for Windows)
+    "xwolf.live@gmail.com": "vizi0uz",  # PR #59795 adopted in #62290
+    "yakimenkoleksander228@gmail.com": "doxe0x",
+    "yansh2017@gmail.com": "ya-nsh",  # PR #26790 salvage (normalize local terminal relative cwd; #26783)
+    "zhchl@hermes-agent.local": "8294",  # PR #50572 salvage (honor config context_length on banner)
+    "1940428933@qq.com": "re-ITRT",  # upstream contributors/emails/
+    "3115763429@qq.com": "WeiYusc",  # upstream contributors/emails/
+    "445481611@qq.com": "kael-odin",  # upstream contributors/emails/
+    "840596168@qq.com": "Bruce-anle",  # upstream contributors/emails/
+    "87degrees@87ui-Macmini.local": "87degrees",  # upstream contributors/emails/
+    "DavidMetcalfe@users.noreply.github.com": "DavidMetcalfe",  # upstream contributors/emails/
+    "PavelTajdus@users.noreply.github.com": "PavelTajdus",  # upstream contributors/emails/
+    "YLChen-007@users.noreply.github.com": "YLChen-007",  # upstream contributors/emails/
+    "aakash@plasticlabs.ai": "akattelu",  # upstream contributors/emails/
+    "agent@agents-Mac-mini.local": "momomojo",  # upstream contributors/emails/
+    "agent@hermes.dev": "webtecnica",  # upstream contributors/emails/
+    "ajzrva@gmail.com": "ajzrva-sys",  # upstream contributors/emails/
+    "akitani@akitaninoMac-mini.local": "2001Y",  # upstream contributors/emails/
+    "alanrbox@gmail.com": "AlanBurningsuit",  # upstream contributors/emails/
+    "almurat@Almurats-MacBook-Pro.local": "Almurat123",  # upstream contributors/emails/
+    "and@appz.cloud": "logical-and",  # upstream contributors/emails/
+    "anoop.mehendale@gmail.com": "anoopmehendale-cue",  # upstream contributors/emails/
+    "ariel@vortexradar.com": "vortexopenclaw",  # upstream contributors/emails/
+    "asscan@189.cn": "asscan",  # upstream contributors/emails/
+    "awain7@gmail.com": "awain7",  # upstream contributors/emails/
+    "ayoub@gmail.com": "Black0Fox0",  # upstream contributors/emails/
+    "bedirhancode@users.noreply.github.com": "bedirhancode",  # upstream contributors/emails/
+    "beingsabundant@gmail.com": "abundantbeing",  # upstream contributors/emails/
+    "ben.ross@moov.io": "bpross",  # upstream contributors/emails/
+    "ben@ben-phillips.net": "tavva",  # upstream contributors/emails/
+    "ben@whetstone.com.au": "bennybuoy",  # upstream contributors/emails/
+    "benjamin2026-dot@users.noreply.github.com": "benjamin2026-dot",  # upstream contributors/emails/
+    "borje@dqsverige.se": "diffen77",  # upstream contributors/emails/
+    "boumagent@gmail.com": "patp",  # upstream contributors/emails/
+    "chancelu@users.noreply.github.com": "chancelu",  # upstream contributors/emails/
+    "chaosxinglong@gmail.com": "chaos-xxl",  # upstream contributors/emails/
+    "chenjin@hermes.local": "Enough1122",  # upstream contributors/emails/
+    "chenyang.yl@alibaba-inc.com": "LiangYang666",  # upstream contributors/emails/
+    "cjwang@sowork.tw": "sowork-skills",  # upstream contributors/emails/
+    "ckorhonen@gmail.com": "ckorhonen",  # upstream contributors/emails/
+    "cluster2@Cluster2s-Mac-Studio.local": "robgfl45",  # upstream contributors/emails/
+    "colin@colingreig.com": "colingreig",  # upstream contributors/emails/
+    "dan.brunsdon@gmail.com": "brunz-me",  # upstream contributors/emails/
+    "deepujain@gmail.com": "deepujain",  # upstream contributors/emails/
+    "deusyu@users.noreply.github.com": "deusyu",  # upstream contributors/emails/
+    "dhravya@supermemory.com": "Dhravya",  # upstream contributors/emails/
+    "dhruv.raajjeev@gmail.com": "dhruvraajeev",  # upstream contributors/emails/
+    "dickson.neoh@gmail.com": "dnth",  # upstream contributors/emails/
+    "dixit.tanmay1995@gmail.com": "tandixit95",  # upstream contributors/emails/
+    "dominicbejar@gmail.com": "dombejar",  # upstream contributors/emails/
+    "eagleyouxiang@gmail.com": "eagle-nyp",  # upstream contributors/emails/
+    "eazye19@users.noreply.github.com": "eazye19",  # upstream contributors/emails/
+    "ella@cincin.mesh": "dsitmilis",  # upstream contributors/emails/
+    "emodoteth@gmail.com": "emo-eth",  # upstream contributors/emails/
+    "esther@feedmob.com": "Esther-Zhu023",  # upstream contributors/emails/
+    "fangliquan@oppo.com": "fangliquanflq",  # upstream contributors/emails/
+    "fanyu@moonshot.cn": "FuryMartin",  # upstream contributors/emails/
+    "fazerluga@gmail.com": "fazerluga-creator",  # upstream contributors/emails/
+    "floatingrain@yeah.net": "floatingrain",  # upstream contributors/emails/
+    "fred.vanwagenen@gmail.com": "FvanW",  # upstream contributors/emails/
+    "geoffreybutler94@gmail.com": "geoffreybutler94",  # upstream contributors/emails/
+    "gigakun@agentmail.to": "gigakun3030",  # upstream contributors/emails/
+    "gijs@digitalbase.eu": "digitalbase",  # upstream contributors/emails/
+    "git@gottz.de": "GottZ",  # upstream contributors/emails/
+    "git@hode.co.uk": "okisdev",  # upstream contributors/emails/
+    "githubespresso407@users.noreply.github.com": "githubespresso407",  # upstream contributors/emails/
+    "gonzalofrancoceballos@Gonzalos-Mac-mini.local": "gonzalofrancoceballos",  # upstream contributors/emails/
+    "greg@border0.com": "th3wingman",  # upstream contributors/emails/
+    "h-chenbin@voyah.com.cn": "ms-alan",  # upstream contributors/emails/
+    "hang.li@tcredit.com": "airclear",  # upstream contributors/emails/
+    "hanqshih@gmail.com": "M1racleShih",  # upstream contributors/emails/
+    "hello@ianks.com": "ianks",  # upstream contributors/emails/
+    "hello@jeromeiveson.com": "Trantor-develops",  # upstream contributors/emails/
+    "hellofrommorgan@users.noreply.github.com": "hellofrommorgan",  # upstream contributors/emails/
+    "hotragn.pettugani_2024@woxsen.edu.in": "Hotragn",  # upstream contributors/emails/
+    "idrisalmalki@Idriss-MacBook-Air.local": "quantumbyte1617",  # upstream contributors/emails/
+    "info@datachainsystems.com": "datachainsystems",  # upstream contributors/emails/
+    "iniak@iniakdeMac-mini.local": "iniak",  # upstream contributors/emails/
+    "israel.lot@gmail.com": "israellot",  # upstream contributors/emails/
+    "jake.tracey@noice.net.au": "jaketracey",  # upstream contributors/emails/
+    "jakub.wolniewicz@gmail.com": "frizikk",  # upstream contributors/emails/
+    "janig88@gmail.com": "Janig88",  # upstream contributors/emails/
+    "jaretbottoms@gmail.com": "jbbottoms",  # upstream contributors/emails/
+    "jasmine@smfworks.com": "smfworks",  # upstream contributors/emails/
+    "jasonfang1993@users.noreply.github.com": "JasonFang1993",  # upstream contributors/emails/
+    "jerry@hermes.local": "zhangyang-crazy-one",  # upstream contributors/emails/
+    "jevin@jevin.org": "ijevin",  # upstream contributors/emails/
+    "jinglun010@gmail.com": "jinglun010-cpu",  # upstream contributors/emails/
+    "joezhang@outlook.com": "JacketPants",  # upstream contributors/emails/
+    "jordanh@nvidia.com": "jordanhubbard",  # upstream contributors/emails/
+    "joshua@amokk.net": "faikwo",  # upstream contributors/emails/
+    "jrfbch@gmail.com": "jrfbch",  # upstream contributors/emails/
+    "kaiyisg@yahoo.com.sg": "kaiyisg",  # upstream contributors/emails/
+    "kamon@gao-ai.com": "kamonspecial",  # upstream contributors/emails/
+    "kinsonnee@gmail.com": "WOLIKIMCHENG",  # upstream contributors/emails/
+    "kosta963@gmail.com": "ildunari",  # upstream contributors/emails/
+    "kshitij@users.noreply.github.com": "kshitijk4poor",  # upstream contributors/emails/
+    "kuangmi@nudge.com.cn": "kuangmi-bit",  # upstream contributors/emails/
+    "kubolko@users.noreply.github.com": "kubolko",  # upstream contributors/emails/
+    "kudi3699@gmail.com": "kudi88",  # upstream contributors/emails/
+    "lamjj622009225@gmail.com": "lost9999",  # upstream contributors/emails/
+    "lesbetes28@gmail.com": "dolphin-creator",  # upstream contributors/emails/
+    "lg_329@163.com": "cifangyiquan",  # upstream contributors/emails/
+    "liqiping@msh.team": "chouqin",  # upstream contributors/emails/
+    "lucas.fernandes.df@gmail.com": "isfttr",  # upstream contributors/emails/
+    "lucas@policastromd.com": "enzo2",  # upstream contributors/emails/
+    "ly-wang19@users.noreply.github.com": "ly-wang19",  # upstream contributors/emails/
+    "m296064@rohpccpu21.mayo.edu": "OfficialDelta",  # upstream contributors/emails/
+    "mail.liangyang@gmail.com": "LiangYang666",  # upstream contributors/emails/
+    "maly.dan@gmail.com": "DanielMaly",  # upstream contributors/emails/
+    "mannnrachman@users.noreply.github.com": "mannnrachman",  # upstream contributors/emails/
+    "markvlcek@gmail.com": "MarkVLK",  # upstream contributors/emails/
+    "martin@tinetwork.com": "tinetwork",  # upstream contributors/emails/
+    "mason@masontanguay.com": "DictatorBacon",  # upstream contributors/emails/
+    "matt.strawbridge@lotuscollective.ai": "matt-strawbridge",  # upstream contributors/emails/
+    "mattshapsss@gmail.com": "mattshapsss",  # upstream contributors/emails/
+    "mbrooks@slack-corp.com": "mwbrooks",  # upstream contributors/emails/
+    "mchermes@edu.dreamcatcher.ai": "McHermes",  # upstream contributors/emails/
+    "mehrzad.karami@gmail.com": "mzkarami",  # upstream contributors/emails/
+    "miniadmin@skshim-mini.local": "plainOldCode",  # upstream contributors/emails/
+    "mkoduri73@gmail.com": "MaheshBhushan",  # upstream contributors/emails/
+    "mpetrelli@gmail.com": "Ne0teric",  # upstream contributors/emails/
+    "mrabsaroka@gmail.com": "MrAbsaroka",  # upstream contributors/emails/
+    "muhammadfurqan0100@gmail.com": "immuhammadfurqan",  # upstream contributors/emails/
+    "mvalentin@valensys.net": "0xr00tf3rr3t",  # upstream contributors/emails/
+    "mycodeisbad@gmail.com": "peterw",  # upstream contributors/emails/
+    "nawfal.fardana@dana.id": "arimu1",  # upstream contributors/emails/
+    "nwadwa@gmail.com": "tw0316",  # upstream contributors/emails/
+    "nyaruko@hermes": "tsuk1nose",  # upstream contributors/emails/
+    "nypyouxiang@163.com": "eagle-nyp",  # upstream contributors/emails/
+    "pan.luo@ubc.ca": "xcompass",  # upstream contributors/emails/
+    "panding99@outlook.com": "panDing19",  # upstream contributors/emails/
+    "patrickmuller@outlook.com": "patrick-muller",  # upstream contributors/emails/
+    "phixxation@gmail.com": "VerbalChainsaw",  # upstream contributors/emails/
+    "pouya.ataei.7@gmail.com": "Polyhistor",  # upstream contributors/emails/
+    "punyko8@users.noreply.github.com": "Punyko8",  # upstream contributors/emails/
+    "rain@synth.kitchen": "matarbot",  # upstream contributors/emails/
+    "rg@replygirl.club": "replygirl",  # upstream contributors/emails/
+    "rmk799@outlook.com": "MustafaK99",  # upstream contributors/emails/
+    "rob@zolkos.com": "robzolkos",  # upstream contributors/emails/
+    "robbyczgw@gmail.com": "robbyczgw-cla",  # upstream contributors/emails/
+    "roger.hanhong@gmail.com": "Roger--Han",  # upstream contributors/emails/
+    "ruizanthony@users.noreply.github.com": "ruizanthony",  # upstream contributors/emails/
+    "ryan.kelln@gmail.com": "RKelln",  # upstream contributors/emails/
+    "s0xn1ck@proton.me": "s0xn1ck",  # upstream contributors/emails/
+    "saitama@saitamas-MacBook-Pro.local": "sebaorrego-koronet",  # upstream contributors/emails/
+    "schattenan@kagaku.eu": "schattenan",  # upstream contributors/emails/
+    "sdevinarayanan@asymbl.com": "shivasymbl",  # upstream contributors/emails/
+    "seth@rapchat.com": "sethmills21",  # upstream contributors/emails/
+    "shubhambc09@gmail.com": "navahc09",  # upstream contributors/emails/
+    "sjq15251852316@gmail.com": "oppenheimor",  # upstream contributors/emails/
+    "skool@doctablade.com": "drleadflow",  # upstream contributors/emails/
+    "skywind5487@gmail.com": "Skywind5487",  # upstream contributors/emails/
+    "songotenukraine@gmail.com": "SongotenU",  # upstream contributors/emails/
+    "sora.bluesky.dev@gmail.com": "Sora-bluesky",  # upstream contributors/emails/
+    "stanislav@local": "sl4m3",  # upstream contributors/emails/
+    "steve.darlow@gmail.com": "kerpopule",  # upstream contributors/emails/
+    "stoltemberg@users.noreply.github.com": "Stoltemberg",  # upstream contributors/emails/
+    "tangyi@DESKTOP-2U4MD8Q": "yitang",  # upstream contributors/emails/
+    "tars@users.noreply.github.com": "MLcogTech",  # upstream contributors/emails/
+    "team@williepeacock.com": "peacockesq",  # upstream contributors/emails/
+    "the3asic@users.noreply.github.com": "the3asic",  # upstream contributors/emails/
+    "theone139344@users.noreply.github.com": "theone139344",  # upstream contributors/emails/
+    "theunathi@gmail.com": "UnathiCodex",  # upstream contributors/emails/
+    "trkim@vms-solutions.com": "ddifa86",  # upstream contributors/emails/
+    "upicat@users.noreply.github.com": "upicat",  # upstream contributors/emails/
+    "valda68k@gmail.com": "valda",  # upstream contributors/emails/
+    "webtecnica@users.noreply.github.com": "webtecnica",  # upstream contributors/emails/
+    "wen0531@gmail.com": "wen0531",  # upstream contributors/emails/
+    "wenzel.james.r@gmail.com": "emo-eth",  # upstream contributors/emails/
+    "wernerhp@users.noreply.github.com": "wernerhp",  # upstream contributors/emails/
+    "wilgefortz@gmail.com": "elphamale",  # upstream contributors/emails/
+    "wrjie@msn.cn": "jeeaay",  # upstream contributors/emails/
+    "xiehong@xinjikang.cn": "seamusmore",  # upstream contributors/emails/
+    "xwlyy1991@163.com": "drafish",  # upstream contributors/emails/
+    "yemi@lagosinternationalmarket.com": "yemi-lagosinternationalmarket",  # upstream contributors/emails/
+    "yuntianqing@yahoo.com": "zengzheqing",  # upstream contributors/emails/
+    "z23@users.noreply.github.com": "z23",  # upstream contributors/emails/
+    "zhangk1985@gmail.com": "kylezh",  # upstream contributors/emails/
+    "zhunyunjiang@gmail.com": "akb4q",  # upstream contributors/emails/
+    "zkgit.substance129@passmail.com": "richkapp",  # upstream contributors/emails/
+    "nousbot@nousresearch.com": "nousbot-eng",  # upstream fmt(js) automation bot (author name nousbot-eng)
 }
 
 

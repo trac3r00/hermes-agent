@@ -4161,6 +4161,16 @@ def run_conversation(
             _normalize_kwargs = {}
             if agent.api_mode == "anthropic_messages":
                 _normalize_kwargs["strip_tool_prefix"] = agent._is_anthropic_oauth
+            elif agent.api_mode == "chat_completions":
+                from providers import get_provider_profile
+                from agent.text_tool_call_parser import resolve_text_tool_call_protocol
+
+                _text_tool_call_protocol = resolve_text_tool_call_protocol(
+                    get_provider_profile((agent.provider or "").strip()),
+                    agent.model,
+                )
+                if _text_tool_call_protocol is not None:
+                    _normalize_kwargs["text_tool_call_protocol"] = _text_tool_call_protocol
             normalized = _transport.normalize_response(response, **_normalize_kwargs)
             assistant_message = normalized
             finish_reason = normalized.finish_reason
