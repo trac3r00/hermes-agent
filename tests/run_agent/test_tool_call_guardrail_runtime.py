@@ -91,7 +91,7 @@ def _recovery_config(**overrides) -> dict:
 def test_default_sequential_path_warns_repeated_exact_failure_without_blocking_execution():
     agent = _make_agent("web_search")
     args = {"query": "same"}
-    _seed_exact_failures(agent, "web_search", args)
+    _seed_exact_failures(agent, "web_search", args, count=1)
     starts = []
     progress = []
     agent.tool_start_callback = lambda *a, **k: starts.append((a, k))
@@ -140,7 +140,7 @@ def test_legacy_hard_stop_config_rejects_repeated_call_and_injects_private_steer
     assert "materially different valid action" in rejected_content
     assert messages[1]["role"] == "user"
     assert "<system-reminder>" in messages[1]["content"]
-    assert "Change strategy NOW" in messages[1]["content"]
+    assert "TOOL RECOVERY REQUIRED" in messages[1]["content"]
 
 
 def test_sequential_after_call_appends_guidance_to_tool_result_without_extra_messages():
@@ -184,11 +184,11 @@ def test_same_tool_failure_warning_tells_model_to_recover_with_tools():
 
     content = messages[0]["content"]
     assert "same_tool_failure_warning" in content
-    assert "Do not switch to text-only replies" in content
-    assert "keep using tools" in content
+    assert "Do not call it again until you can correct the specific error" in content
+    assert "different valid tool call" in content
     assert "pwd && ls -la" in content
-    assert "absolute path" in content
-    assert "different tool" in content
+    assert "read_file/write_file/patch" in content
+    assert "report the concrete blocker" in content
 
 
 def test_legacy_hard_stop_config_concurrent_path_rejects_bad_call_and_runs_valid_one():
@@ -225,7 +225,7 @@ def test_legacy_hard_stop_config_concurrent_path_rejects_bad_call_and_runs_valid
     assert json.loads(tool_messages[1]["content"]) == {"ok": "allowed"}
     assert len(reminders) == 1
     assert "<system-reminder>" in reminders[0]["content"]
-    assert "Change strategy NOW" in reminders[0]["content"]
+    assert "TOOL RECOVERY REQUIRED" in reminders[0]["content"]
     assert starts == [("c-allow", "web_search", allowed_args)]
     started_events = [event for event in progress_events if event[0] == "tool.started"]
     completed_events = [event for event in progress_events if event[0] == "tool.completed"]
@@ -273,12 +273,14 @@ def test_default_run_conversation_warns_without_guardrail_halt():
     ):
         result = agent.run_conversation("search repeatedly")
 
-    assert mock_hfc.call_count == 3
+    # The third identical call is steered instead of executed; the turn continues.
+    assert mock_hfc.call_count == 2
     assert result["turn_exit_reason"].startswith("text_response")
     assert "guardrail" not in result
     assert result["final_response"] == "done"
     tool_contents = [m["content"] for m in result["messages"] if m.get("role") == "tool"]
     assert any("repeated_exact_failure_warning" in content for content in tool_contents)
+    assert any("tool_guardrail_rejected" in content for content in tool_contents)
 
 
 def test_operational_tool_failure_handoff_gets_pre_verify_continuation_without_files():
@@ -399,7 +401,12 @@ def test_legacy_hard_stop_config_run_conversation_steers_to_different_valid_acti
         _mock_response(
             content="",
             finish_reason="tool_calls",
-            tool_calls=[_mock_tool_call("web_search", json.dumps(recovery_args), "c3")],
+            tool_calls=[_mock_tool_call("web_search", json.dumps(repeated_args), "c3")],
+        ),
+        _mock_response(
+            content="",
+            finish_reason="tool_calls",
+            tool_calls=[_mock_tool_call("web_search", json.dumps(recovery_args), "c4")],
         ),
         _mock_response(content="Recovered search result.", finish_reason="stop"),
     ]
@@ -418,7 +425,8 @@ def test_legacy_hard_stop_config_run_conversation_steers_to_different_valid_acti
     ):
         result = agent.run_conversation("search repeatedly")
 
-    assert mock_hfc.call_count == 2
+    # c1 and c2 fail (exact_failure=2), c3 is steered without executing, c4 recovers.
+    assert mock_hfc.call_count == 3
     assert result["final_response"] == "Recovered search result."
     assert result["turn_exit_reason"] != "guardrail_halt"
     assert result["completed"] is True
