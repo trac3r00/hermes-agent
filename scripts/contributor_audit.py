@@ -49,7 +49,6 @@ IGNORED_PATTERNS = [
     re.compile(r"^dependabot", re.IGNORECASE),
     re.compile(r"^renovate", re.IGNORECASE),
     re.compile(r"^Hermes\s+(Agent|Audit)$", re.IGNORECASE),
-    re.compile(r"^nousbot(-eng)?$", re.IGNORECASE),
     re.compile(r"^Ubuntu$", re.IGNORECASE),
 ]
 
@@ -60,7 +59,6 @@ IGNORED_EMAILS = {
     "cursoragent@cursor.com",
     "hermes@nousresearch.com",
     "hermes-audit@example.com",
-    "nousbot@nousresearch.com",
     "hermes@habibilabs.dev",
     "omx@oh-my-codex.dev",
     "codex@openai.com",
@@ -87,7 +85,7 @@ def git(*args, cwd=None):
     result = subprocess.run(
         ["git"] + list(args),
         capture_output=True,
-        text=True, encoding='utf-8', errors='replace',
+        text=True,
         cwd=cwd or str(REPO_ROOT),
     )
     if result.returncode != 0:
@@ -112,7 +110,7 @@ def gh_pr_list():
                 "--limit", "300",
             ],
             capture_output=True,
-            text=True, encoding='utf-8', errors='replace',
+            text=True,
             timeout=60,
         )
         if result.returncode != 0:
@@ -413,10 +411,10 @@ def main():
     if all_unknowns:
         print()
         print(f"=== Unknown Emails ({len(all_unknowns)}) ===")
-        print("These emails have no mapping and should be added via:")
+        print("These emails are not in AUTHOR_MAP and should be added:")
         print()
         for email, name in sorted(all_unknowns.items()):
-            print(f"  python3 scripts/add_contributor.py {email} <github-username>  # {name}")
+            print(f'  "{email}": "{name}",')
 
     # ---- Strict mode: fail CI if new unmapped emails are introduced ----
     if args.strict and all_unknowns:
@@ -441,10 +439,10 @@ def main():
         if new_unknowns:
             print()
             print(f"=== STRICT MODE FAILURE: {len(new_unknowns)} new unmapped email(s) ===")
-            print("Add mapping files before merging (do NOT edit AUTHOR_MAP):")
+            print("Add these to AUTHOR_MAP in scripts/release.py before merging:")
             print()
             for email, name in sorted(new_unknowns.items()):
-                print(f"    python3 scripts/add_contributor.py {email} <github-username>  # {name}")
+                print(f'    "{email}": "<github-username>",')
             print()
             print("To find the GitHub username:")
             print("  gh api 'search/users?q=EMAIL+in:email' --jq '.items[0].login'")

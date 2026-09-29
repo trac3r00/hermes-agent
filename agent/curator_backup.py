@@ -98,12 +98,7 @@ def _backup_cron_jobs_into(dest: Path) -> Dict[str, Any]:
         info["reason"] = "no cron/jobs.json present"
         return info
     try:
-        # utf-8-sig: same dialect as cron/jobs.load_jobs — a UTF-8 BOM left
-        # by Windows editors otherwise survives decoding as U+FEFF, breaks
-        # json.loads below, and misreports jobs_count as 0 with a spurious
-        # parse warning. The BOM-less text is also what gets written to the
-        # backup, so a later rollback restores a loadable file.
-        raw = src.read_text(encoding="utf-8-sig")
+        raw = src.read_text(encoding="utf-8")
     except OSError as e:
         logger.debug("Failed to read cron/jobs.json for backup: %s", e)
         info["reason"] = f"read error: {e}"
@@ -561,7 +556,7 @@ def rollback(backup_id: Optional[str] = None) -> Tuple[bool, str, Optional[Path]
     if target is None:
         return (
             False,
-            "no matching backup found"
+            f"no matching backup found"
             + (f" for id '{backup_id}'" if backup_id else "")
             + " (use `hermes curator rollback --list` to see available snapshots)",
             None,

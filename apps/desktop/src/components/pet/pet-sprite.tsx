@@ -121,12 +121,10 @@ function PetSpriteImpl({ info, zoom = 1, stateOverride, rowOverride }: PetSprite
   const rowOverrideRef = useRef<string | undefined>(rowOverride)
 
   // Keep the override current without re-running the RAF setup effect.
-  // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
   useEffect(() => {
     overrideRef.current = stateOverride
   }, [stateOverride])
 
-  // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
   useEffect(() => {
     rowOverrideRef.current = rowOverride
   }, [rowOverride])
@@ -154,7 +152,6 @@ function PetSpriteImpl({ info, zoom = 1, stateOverride, rowOverride }: PetSprite
     return img
   }, [info.spritesheetBase64, info.mime])
 
-  // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
   useEffect(() => {
     const canvas = canvasRef.current
 

@@ -3,8 +3,6 @@ import { type RefObject, useState } from 'react'
 
 import type { Theme } from '../theme.js'
 
-import { scrollbarColors } from './overlayPrimitives.js'
-
 /**
  * Mouse-draggable scrollbar bound to a `ScrollBox` ref. Re-renders off the
  * parent `tick` so accordions / async content can resize the thumb without a
@@ -41,7 +39,8 @@ export function OverlayScrollbar({
 
   const vBar = (n: number) => (n > 0 ? `${'│\n'.repeat(n - 1)}│` : '')
   const thumbBody = `${'┃\n'.repeat(Math.max(0, thumb - 1))}┃`
-  const { thumb: thumbColor, track: trackColor } = scrollbarColors(t, hover, grab !== null)
+  const thumbColor = grab !== null ? t.color.primary : t.color.accent
+  const trackColor = hover ? t.color.border : t.color.muted
 
   const jump = (row: number, offset: number) => {
     if (!s || !scrollable) {
@@ -69,14 +68,24 @@ export function OverlayScrollbar({
       width={1}
     >
       {!scrollable ? (
-        <Text color={trackColor}>{vBar(vp)}</Text>
+        <Text color={trackColor} dim>
+          {vBar(vp)}
+        </Text>
       ) : (
         <>
-          {thumbTop > 0 ? <Text color={trackColor}>{vBar(thumbTop)}</Text> : null}
+          {thumbTop > 0 ? (
+            <Text color={trackColor} dim={!hover}>
+              {vBar(thumbTop)}
+            </Text>
+          ) : null}
 
           <Text color={thumbColor}>{thumbBody}</Text>
 
-          {below > 0 ? <Text color={trackColor}>{vBar(below)}</Text> : null}
+          {below > 0 ? (
+            <Text color={trackColor} dim={!hover}>
+              {vBar(below)}
+            </Text>
+          ) : null}
         </>
       )}
     </Box>

@@ -141,11 +141,10 @@ class TestFormatMessage:
         assert adapter.format_message("hello world") == "hello world"
 
     def test_already_whatsapp_italic(self):
-        """Markdown *italic* converts to WhatsApp _italic_ (PR #58704)."""
+        """Single *italic* should pass through unchanged."""
         adapter = _make_adapter()
-        assert adapter.format_message("*italic*") == "_italic_"
-        # Already-WhatsApp _italic_ passes through unchanged
-        assert adapter.format_message("_italic_") == "_italic_"
+        # After bold conversion, *text* is WhatsApp italic
+        assert adapter.format_message("*italic*") == "*italic*"
 
     def test_multiline_mixed(self):
         adapter = _make_adapter()

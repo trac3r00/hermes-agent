@@ -30,14 +30,14 @@ Hermes Agent 采用纵深防御安全模型。本页涵盖所有安全边界—�
 
 ```yaml
 approvals:
-  mode: smart     # smart | manual | off
-  timeout: 300    # 等待用户响应的秒数（默认：300）
+  mode: manual    # manual | smart | off
+  timeout: 60     # 等待用户响应的秒数（默认：60）
 ```
 
 | 模式 | 行为 |
 |------|----------|
-| **smart**（默认） | 使用辅助 LLM 评估风险。低风险命令（如 `python -c "print('hello')"`）仅对当前命令自动批准，真正危险的命令自动拒绝，不确定的情况升级为手动提示。 |
-| **manual** | 始终提示用户审批危险命令。 |
+| **manual**（默认） | 始终提示用户审批危险命令 |
+| **smart** | 使用辅助 LLM 评估风险。低风险命令（如 `python -c "print('hello')"` ）自动批准，真正危险的命令自动拒绝，不确定的情况升级为手动提示。 |
 | **off** | 禁用所有审批检查——等同于使用 `--yolo` 运行。所有命令无需提示即可执行。 |
 
 :::warning
@@ -105,7 +105,7 @@ YOLO 模式会禁用会话中**所有**危险命令安全检查——**但硬性
 
 ```yaml
 approvals:
-  timeout: 300  # 秒（默认：300）
+  timeout: 60  # 秒（默认：60）
 ```
 
 ### 触发审批的条件

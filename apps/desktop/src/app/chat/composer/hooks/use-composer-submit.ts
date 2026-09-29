@@ -2,14 +2,13 @@ import { type RefObject, useEffect, useRef } from 'react'
 
 import { SLASH_COMMAND_RE } from '@/lib/chat-runtime'
 import { triggerHaptic } from '@/lib/haptics'
-import { clearSessionDraft, type ComposerAttachment } from '@/store/composer'
+import { clearComposerAttachments, clearSessionDraft, type ComposerAttachment } from '@/store/composer'
 import { resetBrowseState } from '@/store/composer-input-history'
 import { enqueueQueuedPrompt, type QueuedPromptEntry } from '@/store/composer-queue'
 
 import { cloneAttachments, type QueueEditState } from '../composer-utils'
 import { onComposerSubmitRequest } from '../focus'
 import { composerPlainText } from '../rich-editor'
-import { useComposerScope } from '../scope'
 import type { ChatBarProps } from '../types'
 
 interface UseComposerSubmitArgs {
@@ -17,7 +16,7 @@ interface UseComposerSubmitArgs {
   activeQueueSessionKeyRef: RefObject<string | null>
   attachments: ComposerAttachment[]
   busy: boolean
-  compacting: boolean
+  canSteer: boolean
   clearDraft: () => void
   disabled: boolean
   draftRef: RefObject<string>
@@ -43,7 +42,7 @@ interface UseComposerSubmitArgs {
  * queue meet. `submitDraft` is the one decision tree (queue-edit save · slash-
  * now-while-busy · queue · drain · send · stop); `dispatchSubmit` is the shared
  * send-with-restore primitive (re-loads + re-stashes the draft if the gateway
- * rejects, so nothing is ever lost); `steerDraft` redirects the live turn. Reads
+ * rejects, so nothing is ever lost); `steerDraft` nudges the live turn. Reads
  * the draft + queue APIs; owns no state of its own beyond the stable
  * external-submit listener ref.
  */
@@ -52,7 +51,7 @@ export function useComposerSubmit({
   activeQueueSessionKeyRef,
   attachments,
   busy,
-  compacting,
+  canSteer,
   clearDraft,
   disabled,
   draftRef,
@@ -72,8 +71,6 @@ export function useComposerSubmit({
   setComposerText,
   stashAt
 }: UseComposerSubmitArgs) {
-  const scope = useComposerScope()
-
   // Shared send primitive: fire onSubmit, and if the gateway rejects (accepted
   // === false) or throws, re-load + re-stash the draft so the words survive.
   const dispatchSubmit = (text: string, attachments?: ComposerAttachment[]) => {
@@ -82,18 +79,10 @@ export function useComposerSubmit({
 
     const restore = () => {
       loadIntoComposer(text, submittedAttachments)
-      // Use the scope captured at dispatch, not whatever session is focused
-      // now — the gateway can reject well after the user has switched away,
-      // and re-stashing into the currently-focused session would overwrite
-      // its draft with the rejected text from a different session (#54527).
-      stashAt(submittedScope, text, submittedAttachments)
+      stashAt(activeQueueSessionKeyRef.current, text, submittedAttachments)
     }
 
-    void Promise.resolve(
-      attachments
-        ? onSubmit(text, { attachments, composerScope: submittedScope })
-        : onSubmit(text, { composerScope: submittedScope })
-    )
+    void Promise.resolve(attachments ? onSubmit(text, { attachments }) : onSubmit(text))
       .then(accepted => void (accepted === false ? restore() : clearSessionDraft(submittedScope)))
       .catch(restore)
   }
@@ -155,14 +144,7 @@ export function useComposerSubmit({
         triggerHaptic('submit')
         clearDraft()
         dispatchSubmit(text)
-      } else if (!compacting && !attachments.length && text.trim()) {
-        // Cursor-style stop-and-correct: interrupt the live turn and redirect
-        // it with this text. redirect() preserves the shown reasoning/work; if
-        // the turn already ended, steerDraft re-queues so nothing is lost.
-        steerDraft()
       } else if (payloadPresent) {
-        // Attachments can't ride a redirect (no tool-result image carriage) —
-        // queue the whole payload for the next turn.
         queueCurrentDraft()
       } else {
         // Stop button (the only way to reach here while busy with an empty
@@ -177,24 +159,22 @@ export function useComposerSubmit({
       triggerHaptic('submit')
       resetBrowseState(sessionId)
       clearDraft()
-      scope.attachments.clear()
+      clearComposerAttachments()
       dispatchSubmit(text, submittedAttachments)
     }
 
     focusInput()
   }
 
-  // Redirect the live turn with a correction. The gateway either restarts the
-  // active model request with its displayed context or waits for the current
-  // tool boundary. If the turn already ended, queue the words instead.
+  // Steer the live turn (nudge without interrupting). Clears the draft up front
+  // for snappy feedback; if the gateway rejects (no live tool window) the words
+  // are re-queued so nothing is lost — same safety net as a plain queue.
   const steerDraft = () => {
-    const text = draftRef.current.trim()
-
-    // Guard on live editor state, not the render-lagged `canSteer`: a redirect
-    // fired on a fast Enter must not be dropped because state hasn't synced.
-    if (!onSteer || !text || attachments.length > 0 || SLASH_COMMAND_RE.test(text)) {
+    if (!onSteer || !canSteer) {
       return
     }
+
+    const text = draftRef.current.trim()
 
     triggerHaptic('submit')
     clearDraft()
@@ -206,14 +186,5 @@ export function useComposerSubmit({
     })
   }
 
-  const queueDraft = () => {
-    if (disabled || !busy) {
-      return
-    }
-
-    queueCurrentDraft()
-    focusInput()
-  }
-
-  return { dispatchSubmit, queueDraft, steerDraft, submitDraft }
+  return { dispatchSubmit, steerDraft, submitDraft }
 }

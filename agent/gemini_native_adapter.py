@@ -27,17 +27,9 @@ from typing import Any, Dict, Iterator, List, Optional
 
 import httpx
 
-from agent.bounded_response import read_streaming_error_body
 from agent.gemini_schema import sanitize_gemini_tool_parameters
 
 logger = logging.getLogger(__name__)
-
-try:
-    import hermes_cli as _hermes_cli
-
-    _HERMES_VERSION = str(_hermes_cli.__version__)
-except Exception:
-    _HERMES_VERSION = "0.0.0"
 
 DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
@@ -106,10 +98,7 @@ def probe_gemini_tier(
                 url,
                 params={"key": key},
                 json=payload,
-                headers={
-                    "Content-Type": "application/json",
-                    "X-Goog-Api-Client": f"hermes-agent/{_HERMES_VERSION}",
-                },
+                headers={"Content-Type": "application/json"},
             )
     except Exception as exc:
         logger.debug("probe_gemini_tier: network error: %s", exc)
@@ -270,12 +259,8 @@ def _translate_tool_call_to_gemini(tool_call: Dict[str, Any]) -> Dict[str, Any]:
         }
     }
     thought_signature = _tool_call_extra_signature(tool_call)
-    # Fallback sentinel for cross-provider tool_calls (e.g. fallback from
-    # xAI/Anthropic to Gemini, where the original tool_call carries no
-    # Gemini thoughtSignature). Mirrors gemini_cloudcode_adapter.py:106.
-    # Without this, Gemini 3 thinking models reject replayed history with
-    # 400 INVALID_ARGUMENT on the missing thoughtSignature.
-    part["thoughtSignature"] = thought_signature or "skip_thought_signature_validator"
+    if thought_signature:
+        part["thoughtSignature"] = thought_signature
     return part
 
 
@@ -757,17 +742,14 @@ def translate_stream_event(event: Dict[str, Any], model: str, tool_call_indices:
     return chunks
 
 
-def gemini_http_error(
-    response: httpx.Response, *, body_text: Optional[str] = None
-) -> GeminiAPIError:
+def gemini_http_error(response: httpx.Response) -> GeminiAPIError:
     status = response.status_code
+    body_text = ""
     body_json: Dict[str, Any] = {}
-    if body_text is None:
-        try:
-            body_text = response.text
-        except Exception:
-            body_text = ""
-    body_text = body_text or ""
+    try:
+        body_text = response.text
+    except Exception:
+        body_text = ""
     if body_text:
         try:
             parsed = json.loads(body_text)
@@ -915,11 +897,7 @@ class GeminiNativeClient:
             "Content-Type": "application/json",
             "Accept": "application/json",
             "x-goog-api-key": self.api_key,
-            # Include Hermes client context following Gemini's partner
-            # integration guidance.
-            # See https://ai.google.dev/gemini-api/docs/partner-integration
-            "User-Agent": f"hermes-agent/{_HERMES_VERSION} (gemini-native)",
-            "X-Goog-Api-Client": f"hermes-agent/{_HERMES_VERSION}",
+            "User-Agent": "hermes-agent (gemini-native)",
         }
         headers.update(self._default_headers)
         return headers
@@ -990,8 +968,8 @@ class GeminiNativeClient:
             try:
                 with self._http.stream("POST", url, json=request, headers=stream_headers, timeout=timeout) as response:
                     if response.status_code != 200:
-                        body_text = read_streaming_error_body(response)
-                        raise gemini_http_error(response, body_text=body_text)
+                        response.read()
+                        raise gemini_http_error(response)
                     tool_call_indices: Dict[str, Dict[str, Any]] = {}
                     for event in _iter_sse_events(response):
                         for chunk in translate_stream_event(event, model, tool_call_indices):

@@ -1,7 +1,6 @@
 """Tests for named custom provider and 'main' alias resolution in auxiliary_client."""
 
 from unittest.mock import patch, MagicMock
-from pathlib import Path
 
 import pytest
 
@@ -150,65 +149,17 @@ class TestResolveProviderClientNamedCustom:
         # Should use _read_main_model() fallback
         assert model == "main-model"
 
-    def test_named_local_custom_no_api_key_uses_placeholder(self, tmp_path: Path):
+    def test_named_custom_no_api_key_uses_fallback(self, tmp_path):
         _write_config(tmp_path, {
             "model": {"default": "test"},
             "custom_providers": [
                 {"name": "local", "base_url": "http://localhost:8080/v1"},
             ],
         })
-        from agent import auxiliary_client
-        created = MagicMock()
-        with patch.object(auxiliary_client, "_create_openai_client", return_value=created) as create:
-            client, model = auxiliary_client.resolve_provider_client("local", "test")
-        assert client is created
-        assert model == "test"
-        assert create.call_args.kwargs["api_key"] == "no-key-required"
-
-    def test_stale_loopback_llm_pool_without_key_is_rejected_before_client_creation(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture,
-    ):
-        _write_config(tmp_path, {
-            "model": {"default": "test"},
-            "custom_providers": [
-                {
-                    "name": "llm-pool-chat",
-                    "base_url": "http://127.0.0.1:18989/v1",
-                },
-            ],
-        })
-        from agent import auxiliary_client
-        with patch.object(auxiliary_client, "_create_openai_client") as create:
-            client, model = auxiliary_client.resolve_provider_client(
-                "custom:llm-pool-chat", "test",
-            )
-        assert client is None
-        assert model is None
-        create.assert_not_called()
-        assert "provider_resolution_failed" in caplog.text
-        assert "code=missing_api_key" in caplog.text
-        assert "llm-pool-chat" in caplog.text
-
-    def test_keyed_loopback_llm_pool_is_created(self, tmp_path: Path):
-        _write_config(tmp_path, {
-            "model": {"default": "test"},
-            "custom_providers": [
-                {
-                    "name": "llm-pool-chat",
-                    "base_url": "http://127.0.0.1:18989/v1",
-                    "api_key": "pool-key",
-                },
-            ],
-        })
-        from agent import auxiliary_client
-        created = MagicMock()
-        with patch.object(auxiliary_client, "_create_openai_client", return_value=created) as create:
-            client, model = auxiliary_client.resolve_provider_client(
-                "custom:llm-pool-chat", "test",
-            )
-        assert client is created
-        assert model == "test"
-        assert create.call_args.kwargs["api_key"] == "pool-key"
+        from agent.auxiliary_client import resolve_provider_client
+        client, model = resolve_provider_client("local", "test")
+        assert client is not None
+        # no-key-required should be used
 
     def test_nonexistent_named_custom_falls_through(self, tmp_path):
         _write_config(tmp_path, {
@@ -540,73 +491,3 @@ class TestCustomProviderAliasCollision:
         assert isinstance(client, OpenAI)
         assert "override.example.com" in str(client.base_url)
         assert client.api_key == "override-key"
-
-
-class TestResolveProviderClientMainRuntimeCustom:
-    """When the main agent uses a named custom provider (custom:<name>),
-    resolve_provider_client('custom', ..., main_runtime=...) must reuse the
-    main_runtime's base_url + api_key instead of re-resolving from the bare
-    'custom' provider name.  Re-resolution loses the provider name and falls
-    back to OpenRouter or a wrong API-key provider. (#45472)"""
-
-    def test_custom_provider_main_runtime_used_directly(self, tmp_path, monkeypatch):
-        """main_runtime with base_url + api_key for a named custom provider
-        is used directly, bypassing the _try_custom_endpoint / API-key
-        fallback chain."""
-        from agent.auxiliary_client import resolve_provider_client
-        main_runtime = {
-            "provider": "custom",
-            "base_url": "https://my-gateway.example.com/v1",
-            "api_key": "***",
-            "model": "glm-5.1",
-        }
-        client, model = resolve_provider_client(
-            "custom",
-            model="explicit-glm-5.1",
-            main_runtime=main_runtime,
-        )
-        assert client is not None
-        assert model == "explicit-glm-5.1"
-        assert "my-gateway.example.com" in str(client.base_url)
-        assert client.api_key == "***"
-
-    def test_custom_provider_main_runtime_no_credentials_falls_through(self, tmp_path, monkeypatch):
-        """When main_runtime has no base_url or no api_key, the existing
-        _try_custom_endpoint / _resolve_api_key_provider fallback chain is
-        still tried."""
-        # Ensure no env-provided credentials interfere
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
-        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-
-        from agent.auxiliary_client import resolve_provider_client
-        # main_runtime with key but no base_url → must fall through
-        client, model = resolve_provider_client(
-            "custom",
-            main_runtime={"api_key": "k", "base_url": ""},
-        )
-        # Should fall through to _try_custom_endpoint → return None,None
-        # because no OPENAI_BASE_URL is set and no custom endpoint is configured
-        assert client is None
-
-    def test_custom_provider_main_runtime_respects_explicit_base_url(self, tmp_path):
-        """explicit_base_url still wins over main_runtime — the caller's
-        explicit argument is the strongest signal."""
-        from agent.auxiliary_client import resolve_provider_client
-        main_runtime = {
-            "base_url": "https://main-runtime.example.com/v1",
-            "api_key": "sk-main",
-            "model": "ignored-model",
-        }
-        client, model = resolve_provider_client(
-            "custom",
-            model="explicit-model",
-            explicit_base_url="https://explicit.example.com/v1",
-            explicit_api_key="sk-explicit",
-            main_runtime=main_runtime,
-        )
-        assert client is not None
-        assert model == "explicit-model"
-        assert "explicit.example.com" in str(client.base_url)
-        assert client.api_key == "sk-explicit"

@@ -11,6 +11,7 @@ import {
   isRecord,
   numberValue,
   parseMaybeObject,
+  prettyJson,
   unwrapToolPayload
 } from './format'
 import { findFirstUrl, hostnameOf, looksLikePath, looksLikeUrl } from './targets'
@@ -126,12 +127,6 @@ function readFileDisplayTarget(args: Record<string, unknown>, result: Record<str
   const lineLabel = readFileLineLabel(args, result)
 
   return [fileEditBasename(path), lineLabel].filter(Boolean).join(' ')
-}
-
-function shellCommand(args: Record<string, unknown>): string {
-  return (
-    firstStringField(args, ['context', 'preview']) || firstStringField(args, ['command', 'code']) || contextValue(args)
-  )
 }
 
 const TOOL_META: Record<ToolTitleKey, ToolMetaSpec> = {
@@ -1321,7 +1316,10 @@ function dynamicTitle(
   }
 
   if (part.toolName === 'terminal' || part.toolName === 'execute_code') {
-    const command = shellCommand(args)
+    const command =
+      firstStringField(args, ['context', 'preview']) ||
+      firstStringField(args, ['command', 'code']) ||
+      contextValue(args)
 
     if (command) {
       const action =
@@ -1388,11 +1386,6 @@ export function buildToolView(part: ToolPart, inlineDiff: string): ToolView {
   const searchHits =
     part.toolName === 'web_search' && status !== 'error' ? extractSearchResults(part.result) : undefined
 
-  const searchQuery =
-    part.toolName === 'web_search'
-      ? firstStringField(argsRecord, ['search_term', 'query']) || contextValue(argsRecord)
-      : ''
-
   const resultCount = status === 'error' ? null : toolResultCount(part, argsRecord, resultRecord)
 
   // For shell/code tools we surface stdout and stderr as separate labeled
@@ -1406,8 +1399,6 @@ export function buildToolView(part: ToolPart, inlineDiff: string): ToolView {
   // field — otherwise the merged `detail` already covers it and double-
   // rendering would duplicate output.
   const hasSplitStreams = rendersAnsi && (Boolean(stdout) || Boolean(stderrRaw))
-  const terminalCommand = part.toolName === 'terminal' ? shellCommand(argsRecord) : undefined
-  const terminalExitCode = part.toolName === 'terminal' ? numericField(resultRecord, 'exit_code') : undefined
 
   return {
     countLabel: resultCount ? formatCountLabel(resultCount) : undefined,
@@ -1418,12 +1409,11 @@ export function buildToolView(part: ToolPart, inlineDiff: string): ToolView {
     imageUrl: toolImageUrl(argsRecord, resultRecord),
     inlineDiff,
     previewTarget: toolPreviewTarget(part.toolName, argsRecord, resultRecord),
+    rawArgs: prettyJson(part.args),
+    rawResult: prettyJson(part.result),
     rendersAnsi: rendersAnsi || undefined,
-    searchQuery: searchQuery || undefined,
     searchHits: searchHits?.length ? searchHits : undefined,
     stderr: hasSplitStreams ? stderrRaw || undefined : undefined,
-    terminalCommand,
-    terminalExitCode,
     stdout: hasSplitStreams ? stdout || undefined : undefined,
     status,
     subtitle,

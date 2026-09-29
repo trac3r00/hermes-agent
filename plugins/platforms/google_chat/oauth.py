@@ -193,21 +193,13 @@ def load_user_credentials(email: Optional[str] = None) -> Optional[Any]:
     if not token_path.exists():
         return None
 
-    # Same class as slack_tokens.json: hand-provisioned or legacy-written
-    # token files commonly end up 0o644. Warn so the owner tightens them.
-    from utils import warn_if_credential_file_broadly_readable
-
-    warn_if_credential_file_broadly_readable(
-        token_path, label="[google_chat_user_oauth]", log=logger
-    )
-
     try:
         from google.oauth2.credentials import Credentials
         from google.auth.transport.requests import Request
     except ImportError:
         logger.warning(
             "[google_chat_user_oauth] google-auth not installed; user-OAuth "
-            "attachment delivery is disabled. Run `hermes setup` to install Google Chat support."
+            "attachment delivery is disabled. Install hermes-agent[google_chat]."
         )
         return None
 
@@ -387,16 +379,16 @@ def install_deps() -> bool:
 
     print("Installing Google Chat OAuth dependencies...")
     try:
-        from hermes_cli.tools_config import _pip_install
-
-        result = _pip_install(["--quiet"] + _REQUIRED_PACKAGES)
-        if result.returncode != 0:
-            raise RuntimeError((result.stderr or "install failed").strip()[:300])
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "--quiet"] + _REQUIRED_PACKAGES,
+            stdout=subprocess.DEVNULL,
+        )
         print("Dependencies installed.")
         return True
-    except Exception as exc:
+    except subprocess.CalledProcessError as exc:
         print(f"ERROR: Failed to install dependencies: {exc}")
-        print("Run `hermes setup` to repair the managed installation, then retry.")
+        print("Or install via the optional extra:")
+        print("  pip install 'hermes-agent[google_chat]'")
         return False
 
 
@@ -427,7 +419,7 @@ def store_client_secret(path: str) -> None:
         sys.exit(1)
 
     try:
-        data = json.loads(src.read_text(encoding="utf-8"))
+        data = json.loads(src.read_text())
     except json.JSONDecodeError:
         print("ERROR: File is not valid JSON.")
         sys.exit(1)
@@ -467,7 +459,7 @@ def _load_pending_auth(email: Optional[str] = None) -> dict:
         print("ERROR: No pending OAuth session found. Run --auth-url first.")
         sys.exit(1)
     try:
-        data = json.loads(pending.read_text(encoding="utf-8"))
+        data = json.loads(pending.read_text())
     except Exception as exc:
         print(f"ERROR: Could not read pending OAuth session: {exc}")
         print("Run --auth-url again to start a fresh session.")

@@ -150,7 +150,6 @@ def show_status(args):
         "StepFun Step Plan": "STEPFUN_API_KEY",
         "MiniMax": "MINIMAX_API_KEY",
         "MiniMax-CN": "MINIMAX_CN_API_KEY",
-        "DeepInfra": "DEEPINFRA_API_KEY",
         "Firecrawl": "FIRECRAWL_API_KEY",
         "Tavily": "TAVILY_API_KEY",
         "Browser Use": "BROWSER_USE_API_KEY",  # Optional — local browser works without this
@@ -375,7 +374,6 @@ def show_status(args):
         "StepFun Step Plan": ("STEPFUN_API_KEY",),
         "MiniMax":          ("MINIMAX_API_KEY",),
         "MiniMax (China)":  ("MINIMAX_CN_API_KEY",),
-        "DeepInfra":        ("DEEPINFRA_API_KEY",),
     }
     for pname, env_vars in apikey_providers.items():
         key_val = ""
@@ -529,9 +527,7 @@ def show_status(args):
     if jobs_file.exists():
         import json
         try:
-            # utf-8-sig: same dialect as cron/jobs.load_jobs — Windows editors
-            # may leave a UTF-8 BOM that plain utf-8 json.load rejects.
-            with open(jobs_file, encoding="utf-8-sig") as f:
+            with open(jobs_file, encoding="utf-8") as f:
                 data = json.load(f)
                 jobs = data.get("jobs", [])
                 enabled_jobs = [j for j in jobs if j.get("enabled", True)]
@@ -547,39 +543,17 @@ def show_status(args):
     print()
     print(color("◆ Sessions", Colors.CYAN, Colors.BOLD))
 
-    # Gateway session count: state.db is the source of truth (#9006);
-    # fall back to sessions.json for pre-migration installs.
-    _session_count = None
-    try:
-        from hermes_state import SessionDB
-        _db = SessionDB()
+    sessions_file = get_hermes_home() / "sessions" / "sessions.json"
+    if sessions_file.exists():
+        import json
         try:
-            _lister = getattr(_db, "list_gateway_sessions", None)
-            if callable(_lister):
-                _session_count = len(_lister(active_only=True))
-        finally:
-            _db.close()
-    except Exception:
-        _session_count = None
-
-    if _session_count is not None and _session_count > 0:
-        print(f"  Active:       {_session_count} session(s)")
+            with open(sessions_file, encoding="utf-8") as f:
+                data = json.load(f)
+                print(f"  Active:       {len(data)} session(s)")
+        except Exception:
+            print("  Active:       (error reading sessions file)")
     else:
-        sessions_file = get_hermes_home() / "sessions" / "sessions.json"
-        if sessions_file.exists():
-            import json
-            try:
-                with open(sessions_file, encoding="utf-8") as f:
-                    data = json.load(f)
-                    _entries = {
-                        k: v for k, v in data.items()
-                        if not str(k).startswith("_")
-                    } if isinstance(data, dict) else {}
-                    print(f"  Active:       {len(_entries)} session(s)")
-            except Exception:
-                print("  Active:       (error reading sessions file)")
-        else:
-            print(f"  Active:       {_session_count if _session_count is not None else 0}")
+        print("  Active:       0")
 
     # =========================================================================
     # Deep checks

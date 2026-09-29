@@ -122,19 +122,36 @@ def _install_dependencies(provider_name: str) -> None:
 
     print(f"\n  Installing dependencies: {', '.join(missing)}")
 
-    from hermes_cli.tools_config import _pip_install
+    import shutil
 
-    manual_cmd = f"uv pip install {' '.join(missing)}"
+    uv_path = shutil.which("uv")
+    if uv_path:
+        install_cmd = [uv_path, "pip", "install", "--python", sys.executable, "--quiet"] + missing
+        manual_cmd = f"uv pip install --python {sys.executable} {' '.join(missing)}"
+    else:
+        pip_cmd = shutil.which("pip3") or shutil.which("pip")
+        if not pip_cmd:
+            print(f"  ⚠ uv not found — cannot install dependencies")
+            print(f"  Install uv: curl -LsSf https://astral.sh/uv/install.sh | sh")
+            print(f"  Then re-run: hermes memory setup")
+            return
+        print(f"  ⚠ uv not found. Falling back to standard pip...")
+        install_cmd = [sys.executable, "-m", "pip", "install", "--quiet"] + missing
+        manual_cmd = f"{sys.executable} -m pip install {' '.join(missing)}"
+
     try:
-        result = _pip_install(["--quiet"] + missing, timeout=120)
-        if result.returncode == 0:
-            print(f"  ✓ Installed {', '.join(missing)}")
-        else:
-            print(f"  ⚠ Failed to install {', '.join(missing)}")
-            stderr = (result.stderr or "")[:200]
-            if stderr:
-                print(f"    {stderr}")
-            print(f"  Run manually: {manual_cmd}")
+        subprocess.run(
+            install_cmd,
+            check=True, timeout=120,
+            capture_output=True,
+        )
+        print(f"  ✓ Installed {', '.join(missing)}")
+    except subprocess.CalledProcessError as e:
+        print(f"  ⚠ Failed to install {', '.join(missing)}")
+        stderr = (e.stderr or b"").decode()[:200]
+        if stderr:
+            print(f"    {stderr}")
+        print(f"  Run manually: {manual_cmd}")
     except Exception as e:
         print(f"  ⚠ Install failed: {e}")
         print(f"  Run manually: {manual_cmd}")
@@ -231,7 +248,7 @@ def cmd_setup_provider(provider_name: str) -> None:
     config["memory"]["provider"] = name
     save_config(config)
     print(f"\n  Memory provider: {name}")
-    print("  Activation saved to config.yaml\n")
+    print(f"  Activation saved to config.yaml\n")
 
 
 def cmd_setup(args) -> None:
@@ -371,27 +388,12 @@ def cmd_setup(args) -> None:
         _write_env_vars(env_path, env_writes)
 
     print(f"\n  Memory provider: {name}")
-    print("  Activation saved to config.yaml")
+    print(f"  Activation saved to config.yaml")
     if provider_config:
-        print("  Provider config saved")
+        print(f"  Provider config saved")
     if env_writes:
-        print("  API keys saved to .env")
-    print("\n  Start a new session to activate.\n")
-
-
-def _env_line_safe(value) -> str:
-    """Neutralize characters that would break ``.env`` line structure.
-
-    ``.env`` is strictly line-oriented (one ``KEY=VALUE`` per line) and
-    values are interpolated straight into that line. A pasted secret with an
-    embedded CR/LF would spill onto a new line and be re-parsed as a
-    *separate* ``KEY=VALUE`` entry on the next read — injecting an arbitrary
-    variable into the credentials file. Strip every separator recognized by
-    ``str.splitlines()`` plus NUL so a value can only occupy its own line.
-    Mirrors the openviking plugin's writer and ``config.save_env_value``.
-    """
-    text = value if isinstance(value, str) else str(value)
-    return "".join(text.replace("\x00", "").splitlines())
+        print(f"  API keys saved to .env")
+    print(f"\n  Start a new session to activate.\n")
 
 
 def _write_env_vars(env_path: Path, env_writes: dict) -> None:
@@ -407,14 +409,14 @@ def _write_env_vars(env_path: Path, env_writes: dict) -> None:
     for line in existing_lines:
         key_match = line.split("=", 1)[0].strip() if "=" in line else ""
         if key_match in env_writes:
-            new_lines.append(f"{key_match}={_env_line_safe(env_writes[key_match])}")
+            new_lines.append(f"{key_match}={env_writes[key_match]}")
             updated_keys.add(key_match)
         else:
             new_lines.append(line)
 
     for key, val in env_writes.items():
         if key not in updated_keys:
-            new_lines.append(f"{key}={_env_line_safe(val)}")
+            new_lines.append(f"{key}={val}")
 
     env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
     # Restrict permissions — .env holds API keys and tokens.
@@ -437,24 +439,8 @@ def cmd_status(args) -> None:
     mem_config = config.get("memory", {})
     provider_name = mem_config.get("provider", "")
 
-    memory_enabled = mem_config.get("memory_enabled", True)
-    user_profile_enabled = mem_config.get("user_profile_enabled", True)
-
-    mem_mark = "enabled ✓" if memory_enabled else "disabled ✗"
-    user_mark = "enabled ✓" if user_profile_enabled else "disabled ✗"
-
-    # Check if the memory tool is enabled for the CLI platform via the
-    # canonical resolver (handles composite toolsets like hermes-cli).
-    from hermes_cli.tools_config import _get_platform_tools
-    cli_tools = _get_platform_tools(config, "cli", include_default_mcp_servers=False)
-    memory_tool_enabled = "memory" in cli_tools
-    tool_mark = "enabled ✓" if memory_tool_enabled else "disabled ✗"
-
-    print("\nMemory status\n" + "─" * 40)
-    print("  Built-in (MEMORY.md / USER.md):")
-    print(f"    Memory injection:   {mem_mark}")
-    print(f"    User profile:       {user_mark}")
-    print(f"    Memory tool:        {tool_mark}")
+    print(f"\nMemory status\n" + "─" * 40)
+    print(f"  Built-in:  always active")
     print(f"  Provider:  {provider_name or '(none — built-in only)'}")
 
     providers = _get_available_providers()
@@ -481,16 +467,16 @@ def cmd_status(args) -> None:
                 print(f"    {key}: {val}")
 
         if provider:
-            print("\n  Plugin:    installed ✓")
+            print(f"\n  Plugin:    installed ✓")
             if provider.is_available():
-                print("  Status:    available ✓")
+                print(f"  Status:    available ✓")
             else:
-                print("  Status:    not available ✗")
+                print(f"  Status:    not available ✗")
                 schema = provider.get_config_schema() if hasattr(provider, "get_config_schema") else []
                 # Check all fields that have env_var (both secret and non-secret)
                 required_fields = [f for f in schema if f.get("env_var")]
                 if required_fields:
-                    print("  Missing:")
+                    print(f"  Missing:")
                     for f in required_fields:
                         env_var = f.get("env_var", "")
                         url = f.get("url", "")
@@ -501,11 +487,11 @@ def cmd_status(args) -> None:
                             line += f"  → {url}"
                         print(line)
         else:
-            print("\n  Plugin:    NOT installed ✗")
+            print(f"\n  Plugin:    NOT installed ✗")
             print(f"  Install the '{provider_name}' memory plugin to ~/.hermes/plugins/")
 
     if providers:
-        print("\n  Installed plugins:")
+        print(f"\n  Installed plugins:")
         for pname, desc, _ in providers:
             active = " ← active" if pname == provider_name else ""
             print(f"    • {pname}  ({desc}){active}")

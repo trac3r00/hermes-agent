@@ -246,7 +246,7 @@ class WebToolsTester:
                 "https://docs.firecrawl.dev/introduction",
                 "https://www.python.org/about/"
             ]
-            print("  Using default URLs for testing")
+            print(f"  Using default URLs for testing")
         else:
             print(f"  Using {len(urls)} URLs from search results")
         
@@ -330,7 +330,7 @@ class WebToolsTester:
                         f"No valid content. {failed_results} errors, {len(results) - failed_results} empty"
                     )
                     if self.verbose:
-                        print("\n  Extraction details:")
+                        print(f"\n  Extraction details:")
                         for detail in extraction_details:
                             print(f"    {detail}")
                     
@@ -387,7 +387,7 @@ class WebToolsTester:
                     )
                     
                     if self.verbose:
-                        print("\n    First 300 chars of processed content:")
+                        print(f"\n    First 300 chars of processed content:")
                         print(f"    {content[:300]}...")
                 else:
                     self.log_result("Extract (with LLM)", "failed", "No content after processing")

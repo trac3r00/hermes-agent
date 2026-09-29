@@ -59,3 +59,35 @@ def test_english_fallback_unchanged_when_compact_off():
     with patch.object(sched, "_cron_delivery_policy", return_value=("", False)):
         out = sched._summarize_cron_failure_for_delivery(job, "429 rate limit exceeded")
     assert "provider rate limit" in out
+
+
+def test_compact_off_success_is_verbatim_even_when_low_value():
+    job = {"id": "j7", "name": "watchdog", "no_agent": True}
+    text = "All clear - no action needed\n"
+    with patch.object(sched, "_cron_delivery_policy", return_value=("", False)):
+        assert sched._prepare_cron_delivery_content(job, text, success=True) == text
+
+
+def test_compact_off_failure_without_error_keeps_english_one_liner():
+    job = {"id": "j8", "name": "quality-failure"}
+    with patch.object(sched, "_cron_delivery_policy", return_value=("", False)):
+        out = sched._prepare_cron_delivery_content(job, None, success=False)
+    assert out == sched._summarize_cron_failure_for_delivery(job, None)
+    assert out.strip()
+
+
+def test_compact_on_failure_without_error_skips_llm():
+    job = {"id": "j9", "name": "quality-failure", "no_agent": True}
+    with patch.object(sched, "_cron_delivery_policy", return_value=("ko", True)), patch(
+        "agent.oneshot.run_oneshot"
+    ) as oneshot:
+        out = sched._prepare_cron_delivery_content(job, None, success=False)
+    oneshot.assert_not_called()
+    assert "실패" in out
+
+
+def test_delivery_policy_defaults_off(monkeypatch):
+    monkeypatch.setattr(sched, "load_config", lambda: {"cron": {}})
+    assert sched._cron_delivery_policy() == ("", False)
+    monkeypatch.setattr(sched, "load_config", lambda: {"cron": {"delivery_language": "ko"}})
+    assert sched._cron_delivery_policy() == ("ko", True)

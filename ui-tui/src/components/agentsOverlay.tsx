@@ -32,7 +32,6 @@ import { compactPreview } from '../lib/text.js'
 import type { Theme } from '../theme.js'
 import type { SubagentNode, SubagentProgress } from '../types.js'
 
-import { listRowStyle } from './overlayPrimitives.js'
 import { OverlayScrollbar } from './overlayScrollbar.js'
 
 // ── Types + lookup tables ────────────────────────────────────────────
@@ -465,17 +464,14 @@ function ListRow({
   const paren = line ? line.indexOf('(') : -1
   const toolShort = line ? (paren > 0 ? line.slice(0, paren) : line).trim() : ''
   const trailing = toolShort ? ` · ${compactPreview(toolShort, 14)}` : ''
-  // Selection chip, not `inverse` — inverse swaps against the terminal's
-  // unknowable defaults (black slab on transparent profiles).
-  const row = listRowStyle(t, active)
-  const fg = active ? (row.color ?? t.color.accent) : t.color.text
+  const fg = active ? t.color.accent : t.color.text
 
   return (
-    <Text backgroundColor={row.backgroundColor} bold={active} color={fg} wrap="truncate-end">
+    <Text bold={active} color={fg} inverse={active} wrap="truncate-end">
       {' '}
       <Text color={active ? fg : t.color.muted}>{formatRowId(index)} </Text>
       {indentFor(node.item.depth)}
-      {heatMarker ? <Text color={active ? fg : heatMarker}>▍</Text> : null}
+      {heatMarker ? <Text color={heatMarker}>▍</Text> : null}
       <Text color={active ? fg : color}>{glyph}</Text> {goal}
       <Text color={active ? fg : t.color.muted}>
         {toolsCount}

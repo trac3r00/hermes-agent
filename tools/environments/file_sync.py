@@ -35,9 +35,6 @@ logger = logging.getLogger(__name__)
 # ``time.sleep`` globally because ``time`` is the module object; under xdist
 # that lets unrelated background threads inflate retry-test call counts.
 _sleep = time.sleep
-# Same rationale for the rate-limit clock: tests patch ``_monotonic``
-# instead of ``time.monotonic`` on the shared module object.
-_monotonic = time.monotonic
 
 _SYNC_INTERVAL_SECONDS = 5.0
 _FORCE_SYNC_ENV = "HERMES_FORCE_FILE_SYNC"
@@ -172,7 +169,7 @@ class FileSyncManager:
         On failure, state rolls back so the next cycle retries everything.
         """
         if not force and not os.environ.get(_FORCE_SYNC_ENV):
-            now = _monotonic()
+            now = time.monotonic()
             if now - self._last_sync_time < self._sync_interval:
                 return
 
@@ -196,7 +193,7 @@ class FileSyncManager:
         to_delete = [p for p in self._synced_files if p not in current_remote_paths]
 
         if not to_upload and not to_delete:
-            self._last_sync_time = _monotonic()
+            self._last_sync_time = time.monotonic()
             return
 
         # Snapshot for rollback (only when there's work to do)
@@ -230,17 +227,12 @@ class FileSyncManager:
                 self._pushed_hashes.pop(p, None)
 
             self._synced_files = new_files
-            self._last_sync_time = _monotonic()
+            self._last_sync_time = time.monotonic()
 
         except Exception as exc:
             self._synced_files = prev_files
             self._pushed_hashes = prev_hashes
-            # Do NOT advance _last_sync_time here: a failed cycle rolls state
-            # back so the next cycle can retry. Bumping the rate-limit clock on
-            # failure would make the next non-forced sync() return early (the
-            # guard above), suppressing that retry for up to _sync_interval and
-            # leaving the remote with stale files — contradicting this method's
-            # documented "next cycle retries everything" contract.
+            self._last_sync_time = time.monotonic()
             logger.warning("file_sync: sync failed, rolled back state: %s", exc)
 
     # ------------------------------------------------------------------
@@ -310,17 +302,7 @@ class FileSyncManager:
             if on_main_thread and original_handler is not None:
                 signal.signal(signal.SIGINT, original_handler)
                 if deferred_sigint:
-                    # Re-deliver the deferred Ctrl+C to the just-restored
-                    # handler. ``os.kill(os.getpid(), signal.SIGINT)`` is NOT a
-                    # graceful signal on Windows: os.kill only treats
-                    # CTRL_C_EVENT(0)/CTRL_BREAK_EVENT(1) as console events; any
-                    # other value (SIGINT == 2) routes to TerminateProcess(sig),
-                    # hard-killing the CLI (exit code 2) instead of raising
-                    # KeyboardInterrupt — so a Ctrl+C during a remote-backend
-                    # sync-back would kill the whole session on Windows.
-                    # ``signal.raise_signal`` (3.8+) invokes the handler via C
-                    # ``raise()`` on every platform.
-                    signal.raise_signal(signal.SIGINT)
+                    os.kill(os.getpid(), signal.SIGINT)
 
     def _sync_back_locked(self, lock_path: Path) -> None:
         """Sync-back under file lock (serializes concurrent gateways)."""

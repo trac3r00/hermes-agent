@@ -12,13 +12,8 @@ export interface ResolveGatewayWsUrlDeps {
    * OAuth-gated gateways use single-use tickets, so callers should mint
    * immediately before opening the socket.
    */
-  getGatewayWsUrl?: (profile?: null | string) => Promise<GatewayWsUrlResult>
+  getGatewayWsUrl?: (profile?: null | string) => Promise<string>
 }
-
-export type GatewayWsUrlResult =
-  | string
-  | { ok: true; wsUrl: string }
-  | { error: string; needsOauthLogin?: boolean; ok: false }
 
 export class GatewayReauthRequiredError extends Error {
   readonly needsOauthLogin = true
@@ -42,51 +37,26 @@ export async function resolveGatewayWsUrl(deps: ResolveGatewayWsUrlDeps, conn: G
 
   if (conn.authMode === 'oauth') {
     if (!mint) {
-      throw new Error('This Desktop build cannot refresh OAuth WebSocket tickets. Update Hermes Desktop and try again.')
+      throw new GatewayReauthRequiredError(
+        'Your remote gateway session needs to be refreshed. Open Settings -> Gateway and click "Sign in" again.'
+      )
     }
 
     try {
-      const result = await mint(profile)
-
-      if (typeof result === 'string') {
-        return result
-      }
-
-      if (result.ok) {
-        return result.wsUrl
-      }
-
-      if (result.needsOauthLogin) {
-        throw new GatewayReauthRequiredError(
-          'Your remote gateway session has expired. Open Settings -> Gateway and click "Sign in" again.',
-          { cause: new Error(result.error) }
-        )
-      }
-
-      throw new Error(result.error || 'Could not refresh the remote gateway WebSocket ticket.')
+      return await mint(profile)
     } catch (error) {
-      if (isGatewayReauthRequired(error)) {
-        throw error instanceof GatewayReauthRequiredError
-          ? error
-          : new GatewayReauthRequiredError(
-              'Your remote gateway session has expired. Open Settings -> Gateway and click "Sign in" again.',
-              { cause: error }
-            )
-      }
-
-      throw error
+      throw new GatewayReauthRequiredError(
+        'Your remote gateway session has expired. Open Settings -> Gateway and click "Sign in" again.',
+        { cause: error }
+      )
     }
   }
 
   if (mint) {
     const fresh = await mint(profile).catch(() => null)
 
-    if (typeof fresh === 'string') {
+    if (fresh) {
       return fresh
-    }
-
-    if (fresh?.ok) {
-      return fresh.wsUrl
     }
   }
 
@@ -124,7 +94,6 @@ function normalizeBasePath(basePath: string | undefined): string {
   }
 
   const withLead = basePath.startsWith('/') ? basePath : `/${basePath}`
-
   return withLead.replace(/\/+$/, '')
 }
 

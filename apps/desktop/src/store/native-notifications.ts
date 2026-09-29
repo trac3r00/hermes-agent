@@ -8,15 +8,14 @@ import { $activeSessionId } from './session'
 
 // Native OS notifications (Electron `Notification`), separate from the in-app
 // toast feed in `notifications.ts`. Each kind toggles independently.
-export type NativeNotificationKind = 'approval' | 'backgroundDone' | 'credits' | 'input' | 'turnDone' | 'turnError'
+export type NativeNotificationKind = 'approval' | 'backgroundDone' | 'input' | 'turnDone' | 'turnError'
 
 export const NATIVE_NOTIFICATION_KINDS: readonly NativeNotificationKind[] = [
   'approval',
   'input',
   'turnDone',
   'turnError',
-  'backgroundDone',
-  'credits'
+  'backgroundDone'
 ]
 
 // Blocking prompts — surface even while focused if they're for another session.
@@ -31,7 +30,7 @@ const STORAGE_KEY = 'hermes:native-notifications'
 
 const DEFAULT_PREFS: NativeNotificationPrefs = {
   enabled: true,
-  kinds: { approval: true, backgroundDone: true, credits: true, input: true, turnDone: true, turnError: true }
+  kinds: { approval: true, backgroundDone: true, input: true, turnDone: true, turnError: true }
 }
 
 function readPrefs(): NativeNotificationPrefs {

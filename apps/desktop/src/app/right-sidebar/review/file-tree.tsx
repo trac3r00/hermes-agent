@@ -19,7 +19,7 @@ import { isDesktopFsRemoteMode } from '@/lib/desktop-fs'
 import { normalizeOrLocalPreviewTarget } from '@/lib/local-preview'
 import { cn } from '@/lib/utils'
 import { $renamingPath, copyFilePath, revealFile, toRelativePath } from '@/store/file-actions'
-import { $sidebarWorkspaceNodeOpen, revealFileInTree, toggleWorkspaceNodeCollapsed } from '@/store/layout'
+import { $sidebarWorkspaceCollapsedIds, revealFileInTree, toggleWorkspaceNodeCollapsed } from '@/store/layout'
 import { notifyError } from '@/store/notifications'
 import { setCurrentSessionPreviewTarget } from '@/store/preview'
 import {
@@ -105,7 +105,6 @@ export function ReviewFileTree() {
   const [animate, setAnimate] = useState(false)
   const armed = useRef(false)
 
-  // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
   useEffect(() => {
     if (!open) {
       armed.current = false
@@ -113,7 +112,6 @@ export function ReviewFileTree() {
     }
   }, [open])
 
-  // eslint-disable-next-line no-restricted-syntax -- legitimate non-atom ref write (see eslint rule comment)
   useEffect(() => {
     if (open && !loading && !armed.current) {
       armed.current = true
@@ -200,9 +198,9 @@ function ReviewDirRow({
   motion: boolean
   node: ReviewTreeNode
 }) {
-  const nodeOpen = useStore($sidebarWorkspaceNodeOpen)
+  const collapsed = useStore($sidebarWorkspaceCollapsedIds)
   const id = `review:${node.id}`
-  const open = nodeOpen[id] ?? true
+  const open = !collapsed.includes(id)
   const toggle = () => toggleWorkspaceNodeCollapsed(id)
 
   return (
@@ -220,7 +218,6 @@ function ReviewDirRow({
         <span className="min-w-0 flex-1 truncate" title={node.name}>
           {node.name}
         </span>
-        {!open && <DiffCount added={node.added} className="text-[0.64rem] leading-4" removed={node.removed} />}
       </div>
       {open && node.children && (
         <ReviewNodeList animate={animate} depth={depth + 1} motion={useMotion} nodes={node.children} />

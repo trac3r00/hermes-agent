@@ -36,12 +36,12 @@ from gateway.config import GatewayConfig, HomeChannel, Platform
 from gateway.platforms.base import MessageEvent, MessageType, SendResult
 from gateway.run import (
     _AGENT_PENDING_SENTINEL,
+    _AUTO_RESUME_EVENT_TEXT,
     _auto_continue_freshness_window,
     _coerce_gateway_timestamp,
     _is_fresh_gateway_interruption,
     _last_transcript_timestamp,
     _should_clear_resume_pending_after_turn,
-    build_resume_recovery_note,
 )
 from gateway.session import SessionEntry, SessionSource, SessionStore
 from tests.gateway.restart_test_helpers import (
@@ -153,9 +153,39 @@ def _simulate_note_injection(
 
     if is_resume_pending:
         reason = getattr(resume_entry, "resume_reason", None) or "restart_timeout"
-        # Real production note builder — extracted to module scope in
-        # gateway/run.py so tests exercise the actual strings.
-        message = build_resume_recovery_note(reason, message)
+        reason_phrase = (
+            "a gateway restart"
+            if reason == "restart_timeout"
+            else "a gateway shutdown"
+            if reason == "shutdown_timeout"
+            else "a gateway interruption"
+        )
+        is_synthetic_auto_resume = message == _AUTO_RESUME_EVENT_TEXT
+        if is_synthetic_auto_resume:
+            resume_guidance = (
+                "Continue the unfinished task from the existing transcript. "
+                "Re-establish ephemeral tool state if needed. Do not ask the "
+                "user to repeat the request, choose again, or send another "
+                "message, and do not describe this as a blank message."
+            )
+        elif message:
+            resume_guidance = (
+                "Address the user's NEW message below FIRST and focus "
+                "on what the user is asking now."
+            )
+        else:
+            resume_guidance = (
+                "Report to the user that the session was restored "
+                "successfully and ask what they would like to do next."
+            )
+        message = (
+            f"[System note: The previous turn was interrupted by "
+            f"{reason_phrase}; the gateway is now back online. "
+            f"Any restart/shutdown command in the history has already "
+            f"run — do NOT re-execute or verify it. {resume_guidance} "
+            f"Do NOT re-execute completed tool calls or repeat side effects.]"
+            + ("" if is_synthetic_auto_resume else (f"\n\n{message}" if message else ""))
+        )
     elif has_fresh_tool_tail:
         message = (
             "[System note: A new message has arrived. The conversation "
@@ -174,7 +204,23 @@ def _simulate_note_injection(
         and getattr(resume_entry, "resume_pending", False)
     ):
         sn_reason = getattr(resume_entry, "resume_reason", None) or "restart_timeout"
-        message = build_resume_recovery_note(sn_reason, "")
+        sn_reason_phrase = (
+            "a gateway restart"
+            if sn_reason == "restart_timeout"
+            else "a gateway shutdown"
+            if sn_reason == "shutdown_timeout"
+            else "a gateway interruption"
+        )
+        message = (
+            f"[System note: The previous turn was interrupted by "
+            f"{sn_reason_phrase}; the gateway is now back online. "
+            f"Any restart/shutdown command in the history has already "
+            f"run — do NOT re-execute or verify it. Continue the unfinished "
+            f"task from the existing transcript without asking the user to "
+            f"repeat it or describing this as a blank message. Re-establish "
+            f"ephemeral tool state if needed, and do NOT repeat completed "
+            f"side effects.]"
+        )
     return message
 
 
@@ -483,34 +529,6 @@ class TestResumePendingSystemNote:
         )
         assert "gateway shutdown" in result
 
-    def test_empty_message_interactive_note_asks_what_next(self):
-        """Interactive platforms: the startup auto-resume turn reports the
-        restore and asks the (present) human what to do next."""
-        note = build_resume_recovery_note("restart_timeout", "", interactive=True)
-        assert "session was restored" in note
-        assert "ask what they would like to do next" in note
-        assert "skip any unfinished work" in note
-
-    def test_empty_message_noninteractive_note_continues_task(self):
-        """Non-interactive platforms (webhook, API server): nobody can answer
-        'what next?', so the resumed turn must complete the interrupted work
-        instead of acknowledging (#57056)."""
-        note = build_resume_recovery_note("restart_timeout", "", interactive=False)
-        assert "CONTINUE the interrupted task" in note
-        assert "session was restored" not in note
-        assert "ask what they would like to do next" not in note
-        # Must not tell the model to skip the unfinished work it should finish.
-        assert "skip any unfinished work" not in note
-        # But still guards against re-running already-recorded tool calls.
-        assert "already appear in the history" in note
-
-    def test_new_message_guidance_identical_regardless_of_interactivity(self):
-        """A real NEW user message always wins — same guidance either way."""
-        a = build_resume_recovery_note("restart_timeout", "do the thing", interactive=True)
-        b = build_resume_recovery_note("restart_timeout", "do the thing", interactive=False)
-        assert a == b
-        assert "NEW message" in a
-
     def test_resume_pending_fires_without_tool_tail(self):
         """Key improvement over PR #9934: the restart-resume note fires
         even when the transcript's last role is NOT ``tool``."""
@@ -791,27 +809,23 @@ class TestResumePendingSystemNote:
         assert "already" in result and "do NOT re-execute or verify" in result
         assert "restarted!" in result
 
-    def test_resume_pending_empty_message_reports_recovery(self):
-        """On the empty-message auto-resume startup turn there is no NEW user
-        message, so the note instructs the model to report recovery and ask
-        for instructions rather than 'address the user's NEW message'.
-        """
+    def test_resume_pending_marker_continues_unfinished_task(self):
         entry = self._pending_entry(reason="restart_timeout")
         result = _simulate_note_injection(
             history=[
                 {"role": "assistant", "content": "in progress", "timestamp": time.time()},
             ],
-            user_message="",
+            user_message=_AUTO_RESUME_EVENT_TEXT,
             resume_entry=entry,
         )
         assert "[System note:" in result
         assert "gateway restart" in result
-        assert "restored successfully" in result
-        assert "ask what they would like to do next" in result
+        assert "Continue the unfinished task" in result
+        assert "ask the user to repeat" in result
+        assert "blank message" in result
         assert "do NOT re-execute or verify" in result
-        # No phantom "NEW message" instruction when there is no new message.
         assert "NEW message" not in result
-        # Nothing appended after the closing bracket (no empty user text).
+        assert _AUTO_RESUME_EVENT_TEXT not in result
         assert result.rstrip().endswith("]")
 
 
@@ -1061,10 +1075,7 @@ async def test_startup_auto_resume_schedules_fresh_pending_sessions():
     assert event.internal is True
     assert event.message_type == MessageType.TEXT
     assert event.source == source
-    # Text is empty — the existing _is_resume_pending branch in
-    # _handle_message_with_agent owns the system-note injection so we don't
-    # double it up.
-    assert event.text == ""
+    assert event.text == _AUTO_RESUME_EVENT_TEXT
 
 
 @pytest.mark.asyncio
@@ -1350,7 +1361,7 @@ async def test_reconnect_reschedules_pending_after_late_platform_connect():
     assert isinstance(event, MessageEvent)
     assert event.internal is True
     assert event.message_type == MessageType.TEXT
-    assert event.text == ""
+    assert event.text == _AUTO_RESUME_EVENT_TEXT
     assert event.source == source
 
 

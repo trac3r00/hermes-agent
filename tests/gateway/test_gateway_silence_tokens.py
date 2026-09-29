@@ -163,3 +163,30 @@ async def test_prose_mentioning_silence_token_is_delivered(monkeypatch, tmp_path
     )
 
     assert response == text
+
+
+@pytest.mark.asyncio
+async def test_internal_write_file_schema_repair_is_not_delivered(monkeypatch, tmp_path):
+    runner = _runner(monkeypatch, tmp_path)
+    text = (
+        "write_file: error: write_file: missing required field 'path'. "
+        "Re-emit the tool call with both 'path' and 'content' set."
+    )
+    runner._run_agent = AsyncMock(return_value={
+        "final_response": text,
+        "messages": [
+            {"role": "user", "content": "question"},
+            {"role": "assistant", "content": text},
+        ],
+        "tools": [],
+        "history_offset": 0,
+        "last_prompt_tokens": 0,
+        "api_calls": 1,
+        "failed": True,
+    })
+
+    response = await runner._handle_message_with_agent(
+        _event(), _source(), "agent:main:slack:channel:C123", 1
+    )
+
+    assert response == ""

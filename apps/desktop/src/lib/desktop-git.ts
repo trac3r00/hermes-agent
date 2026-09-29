@@ -1,5 +1,4 @@
 import type {
-  HermesGitBaseBranch,
   HermesGitBranch,
   HermesGitWorktree,
   HermesRepoStatus,
@@ -59,9 +58,6 @@ const remoteGit: GitBridge = {
   branchList: async repoPath =>
     (await gitGet<{ branches: HermesGitBranch[] }>('branches', { path: repoPath })).branches,
 
-  baseBranchList: async repoPath =>
-    (await gitGet<{ branches: HermesGitBaseBranch[] }>('base-branches', { path: repoPath })).branches,
-
   repoStatus: repoPath => gitGet<HermesRepoStatus | null>('status', { path: repoPath }),
 
   fileDiff: async (repoPath, filePath) =>
@@ -101,9 +97,5 @@ const remoteGit: GitBridge = {
 }
 
 export function desktopGit(): GitBridge | undefined {
-  if (typeof window === 'undefined') {
-    return undefined
-  }
-
   return isDesktopFsRemoteMode() ? remoteGit : window.hermesDesktop?.git
 }

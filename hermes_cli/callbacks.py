@@ -22,11 +22,8 @@ def clarify_callback(cli, question, choices):
     responds. Returns the user's choice or a timeout message.
     """
     from cli import CLI_CONFIG
-    from tools.clarify_gateway import resolve_clarify_timeout
 
-    # Canonical clarify timeout, shared with the gateway/TUI path. `<= 0`
-    # means unlimited (never auto-skip mid-think) → a null deadline.
-    timeout = resolve_clarify_timeout(CLI_CONFIG)
+    timeout = CLI_CONFIG.get("clarify", {}).get("timeout", 120)
     response_queue = queue.Queue()
     is_open_ended = not choices
 
@@ -36,7 +33,7 @@ def clarify_callback(cli, question, choices):
         "selected": 0,
         "response_queue": response_queue,
     }
-    cli._clarify_deadline = None if timeout <= 0 else _time.monotonic() + timeout
+    cli._clarify_deadline = _time.monotonic() + timeout
     cli._clarify_freetext = is_open_ended
 
     if hasattr(cli, "_app") and cli._app:
@@ -45,20 +42,18 @@ def clarify_callback(cli, question, choices):
     while True:
         try:
             result = response_queue.get(timeout=1)
-            cli._clarify_deadline = None
+            cli._clarify_deadline = 0
             return result
         except queue.Empty:
-            # None deadline = unlimited: never auto-skip, just keep polling.
-            if cli._clarify_deadline is not None:
-                remaining = cli._clarify_deadline - _time.monotonic()
-                if remaining <= 0:
-                    break
+            remaining = cli._clarify_deadline - _time.monotonic()
+            if remaining <= 0:
+                break
             if hasattr(cli, "_app") and cli._app:
                 cli._app.invalidate()
 
     cli._clarify_state = None
     cli._clarify_freetext = False
-    cli._clarify_deadline = None
+    cli._clarify_deadline = 0
     if hasattr(cli, "_app") and cli._app:
         cli._app.invalidate()
     cprint(f"\n{_DIM}(clarify timed out after {timeout}s — agent will decide){_RST}")
@@ -206,7 +201,7 @@ def approval_callback(cli, command: str, description: str) -> str:
 
     with lock:
         from cli import CLI_CONFIG
-        timeout = CLI_CONFIG.get("approvals", {}).get("timeout", 300)
+        timeout = CLI_CONFIG.get("approvals", {}).get("timeout", 60)
         response_queue = queue.Queue()
         choices = ["once", "session", "always", "deny"]
         if len(command) > 70:

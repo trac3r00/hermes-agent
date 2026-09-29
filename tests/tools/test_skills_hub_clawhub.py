@@ -212,9 +212,8 @@ class TestClawHubSource(unittest.TestCase):
         self.assertEqual(meta.identifier, "self-improving-agent")
         self.assertEqual(meta.tags, ["automation"])
 
-    @patch("tools.skills_hub._ssrf_safe_http_get")
     @patch("tools.skills_hub.httpx.get")
-    def test_fetch_resolves_latest_version_and_downloads_raw_files(self, mock_get, mock_safe_get):
+    def test_fetch_resolves_latest_version_and_downloads_raw_files(self, mock_get):
         def side_effect(url, *args, **kwargs):
             if url.endswith("/skills/caldav-calendar"):
                 return _MockResponse(
@@ -234,10 +233,11 @@ class TestClawHubSource(unittest.TestCase):
                         ]
                     },
                 )
+            if url == "https://files.example/skill-md":
+                return _MockResponse(status_code=200, text="# Skill")
             return _MockResponse(status_code=404, json_data={})
 
         mock_get.side_effect = side_effect
-        mock_safe_get.return_value = _MockResponse(status_code=200, text="# Skill")
 
         bundle = self.src.fetch("caldav-calendar")
 
@@ -246,7 +246,6 @@ class TestClawHubSource(unittest.TestCase):
         self.assertIn("SKILL.md", bundle.files)
         self.assertEqual(bundle.files["SKILL.md"], "# Skill")
         self.assertEqual(bundle.files["README.md"], "hello")
-        mock_safe_get.assert_called_once_with("https://files.example/skill-md", timeout=20)
 
     @patch("tools.skills_hub.httpx.get")
     def test_fetch_falls_back_to_versions_list(self, mock_get):
@@ -268,8 +267,7 @@ class TestClawHubSource(unittest.TestCase):
     @patch("tools.skills_hub.check_website_access", return_value=None)
     @patch("tools.skills_hub.is_safe_url")
     @patch("tools.skills_hub.httpx.get")
-    @patch("tools.skills_hub._ssrf_safe_http_get")
-    def test_fetch_blocks_private_raw_url(self, mock_safe_get, mock_get, mock_safe, _mock_policy):
+    def test_fetch_blocks_private_raw_url(self, mock_get, mock_safe, _mock_policy):
         def side_effect(url, *args, **kwargs):
             if url.endswith("/skills/caldav-calendar"):
                 return _MockResponse(
@@ -299,7 +297,6 @@ class TestClawHubSource(unittest.TestCase):
 
         self.assertIsNone(bundle)
         self.assertEqual(mock_get.call_count, 3)
-        mock_safe_get.assert_not_called()
 
     @patch("tools.skills_hub._write_index_cache")
     @patch("tools.skills_hub._read_index_cache", return_value=None)

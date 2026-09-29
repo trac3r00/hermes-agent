@@ -21,12 +21,7 @@ function connectionCacheKey(connection: HermesConnection | null) {
     return 'local:'
   }
 
-  const target =
-    connection.remoteKind === 'ssh'
-      ? connection.remoteIdentity || connection.remoteHost || ''
-      : connection.baseUrl || ''
-
-  return `${connection.mode || 'local'}:${connection.remoteKind || ''}:${connection.profile || ''}:${target}`
+  return `${connection.mode || 'local'}:${connection.profile || ''}:${connection.baseUrl || ''}`
 }
 
 export function desktopFsCacheKey() {

@@ -38,6 +38,7 @@ function makeDeps(gw: GatewayClient, over: Partial<SubmitPromptDeps> = {}): Subm
     enqueue: vi.fn(),
     expand: (t: string) => t,
     gw,
+    maybeGoodVibes: vi.fn(),
     setLastUserMsg: vi.fn(),
     sys: vi.fn(),
     ...over
