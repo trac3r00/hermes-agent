@@ -87,7 +87,7 @@ def _cron_text_has_hangul(text: str) -> bool:
     return any("가" <= ch <= "힣" for ch in text)
 
 
-def _is_low_value_no_agent_success(job: dict, content: str) -> bool:
+def _is_low_value_no_agent_success(job: dict[str, Any], content: str) -> bool:
     if not job.get("no_agent"):
         return False
     lowered = content.strip().lower()
@@ -108,7 +108,7 @@ def _cron_needs_compact(content: str) -> bool:
     return latin >= 4 and not _cron_text_has_hangul(text)
 
 
-def _korean_cron_fallback(job: dict, *, failure: bool) -> str:
+def _korean_cron_fallback(job: dict[str, Any], *, failure: bool) -> str:
     job_name = job.get("name") or job.get("id") or "예약 작업"
     if failure:
         return (
@@ -118,7 +118,7 @@ def _korean_cron_fallback(job: dict, *, failure: bool) -> str:
     return f"{job_name}에서 확인할 내용이 있습니다. 자세한 내용은 로그를 봐 주세요."
 
 
-def _summarize_cron_text_for_delivery(job: dict, text: str | None, *, failure: bool) -> str:
+def _summarize_cron_text_for_delivery(job: dict[str, Any], text: str | None, *, failure: bool) -> str:
     raw = (text or "").strip()
     if not raw:
         return _korean_cron_fallback(job, failure=failure)
@@ -205,7 +205,7 @@ def _summarize_cron_failure_for_delivery(job: dict, error: str | None) -> str:
     return f"⚠️ Cron '{job_name}' failed: {cleaned}"
 
 
-def _prepare_cron_delivery_content(job: dict, content: str | None, *, success: bool) -> str:
+def _prepare_cron_delivery_content(job: dict[str, Any], content: str | None, *, success: bool) -> str:
     """Compact raw/English cron output before it hits Slack or chat.
 
     With compact delivery off (the default) this is exactly the historical
