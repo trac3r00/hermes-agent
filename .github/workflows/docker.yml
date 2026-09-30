@@ -28,7 +28,7 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-latest
+            runner: [self-hosted, linux, x64, pve-ci]
             platform: linux/amd64
             cache-from: type=gha,scope=docker-amd64
             cache-to: type=gha,mode=max,scope=docker-amd64
@@ -156,7 +156,7 @@ jobs:
   # ---------------------------------------------------------------------------
   merge:
     if: github.repository == 'NousResearch/hermes-agent' && (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'release')
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, pve-ci]
     needs: [build]
     timeout-minutes: 10
     steps:

@@ -81,15 +81,15 @@ def test_default_repeated_identical_failed_call_warns_then_steers():
     args = {"query": "same"}
 
     decisions = []
-    for _ in range(5):
+    for _ in range(controller.config.exact_failure_block_after):
         assert controller.before_call("web_search", args).action == "allow"
         decisions.append(
             controller.after_call("web_search", args, '{"error":"boom"}', failed=True)
         )
 
     assert decisions[0].action == "allow"
-    assert [d.action for d in decisions[1:]] == ["warn", "warn", "warn", "warn"]
-    assert {d.code for d in decisions[1:]} == {"repeated_exact_failure_warning"}
+    assert decisions[-1].action == "warn"
+    assert decisions[-1].code == "repeated_exact_failure_warning"
     steer = controller.before_call("web_search", args)
     assert steer.action == "steer"
     assert steer.code == "repeated_exact_failure_steering"

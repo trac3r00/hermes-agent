@@ -28,13 +28,20 @@ jobs:
   lint-diff:
     name: ruff + ty diff
     if: inputs.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, pve-ci]
     timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0 # need full history for merge-base + worktree
+
+      # Self-hosted runners have no bare `python` on PATH; provision one
+      # explicitly for scripts/lint_diff.py.
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5
+        with:
+          python-version: "3.11"
 
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # 8.2.0
@@ -84,15 +91,15 @@ jobs:
             echo '[]' > .lint-reports/base/ruff.json
             echo '[]' > .lint-reports/base/ty.json
           else
-            git worktree add --detach /tmp/lint-base "$BASE_SHA"
+            git worktree add --detach "$RUNNER_TEMP/lint-base" "$BASE_SHA"
             (
-              cd /tmp/lint-base
+              cd "$RUNNER_TEMP/lint-base"
               ruff check --output-format json --exit-zero \
                 > "$GITHUB_WORKSPACE/.lint-reports/base/ruff.json" || true
               ty check --output-format gitlab --exit-zero \
                 > "$GITHUB_WORKSPACE/.lint-reports/base/ty.json" || true
             )
-            git worktree remove --force /tmp/lint-base
+            git worktree remove --force "$RUNNER_TEMP/lint-base"
           fi
           echo "base ruff: $(wc -c < .lint-reports/base/ruff.json) bytes"
           echo "base ty:   $(wc -c < .lint-reports/base/ty.json) bytes"
@@ -119,7 +126,7 @@ jobs:
     # ``lint-diff`` job above runs independently so reviewers still get
     # the diff comment even when enforcement fails.
     name: ruff enforcement (blocking)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, pve-ci]
     timeout-minutes: 5
     steps:
       - name: Checkout code
@@ -145,7 +152,7 @@ jobs:
     # shebang scripts via subprocess, bare open() without encoding=, etc.
     # See scripts/check-windows-footguns.py for the full rule list.
     name: Windows footguns (blocking)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, pve-ci]
     timeout-minutes: 5
     steps:
       - name: Checkout code

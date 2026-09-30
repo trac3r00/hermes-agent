@@ -72,6 +72,12 @@ class ProviderProfile:
     # (e.g. Xiaomi MiMo, which returns 400 "text is not set").
     supports_vision_tool_messages: bool = True
 
+    # ── Text tool-call protocols ──────────────────────────────
+    # Opt-in map of lowercase model name (or "*" for the provider default)
+    # to a TextToolCallProtocol value, for providers that emit tool calls as
+    # assistant text instead of native tool_calls. Empty = disabled.
+    text_tool_call_protocols: dict[str, str] = field(default_factory=dict)
+
     # ── Model catalog ─────────────────────────────────────────
     # fallback_models: curated list shown in /model picker when live fetch fails.
     # Only agentic models that support tool calling should appear here.
