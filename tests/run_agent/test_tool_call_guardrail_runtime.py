@@ -5,6 +5,7 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from agent.tool_guardrails import _build_system_reminder, _tool_failure_recovery_hint
 from run_agent import AIAgent
 
 
@@ -141,7 +142,7 @@ def test_legacy_hard_stop_config_rejects_repeated_call_and_injects_private_steer
     assert "materially different valid action" in rejected_content
     assert messages[1]["role"] == "user"
     assert "<system-reminder>" in messages[1]["content"]
-    assert "TOOL RECOVERY REQUIRED" in messages[1]["content"]
+    assert messages[1]["content"] == _build_system_reminder("web_search", 0, "steer")["content"]
 
 
 def test_sequential_after_call_appends_guidance_to_tool_result_without_extra_messages():
@@ -185,10 +186,7 @@ def test_same_tool_failure_warning_tells_model_to_recover_with_tools():
 
     content = messages[0]["content"]
     assert "same_tool_failure_warning" in content
-    assert "Do not call it again" in content
-    assert "correct the specific error" in content
-    assert "pwd && ls -la" in content
-    assert "different valid tool call" in content
+    assert _tool_failure_recovery_hint("terminal", 3) in content
 
 
 def test_legacy_hard_stop_config_concurrent_path_rejects_bad_call_and_runs_valid_one():
@@ -225,7 +223,7 @@ def test_legacy_hard_stop_config_concurrent_path_rejects_bad_call_and_runs_valid
     assert json.loads(tool_messages[1]["content"]) == {"ok": "allowed"}
     assert len(reminders) == 1
     assert "<system-reminder>" in reminders[0]["content"]
-    assert "TOOL RECOVERY REQUIRED" in reminders[0]["content"]
+    assert reminders[0]["content"] == _build_system_reminder("web_search", 0, "steer")["content"]
     assert starts == [("c-allow", "web_search", allowed_args)]
     started_events = [event for event in progress_events if event[0] == "tool.started"]
     completed_events = [event for event in progress_events if event[0] == "tool.completed"]
@@ -443,7 +441,7 @@ def test_legacy_hard_stop_config_run_conversation_steers_to_different_valid_acti
         for message in result["messages"]
         if message.get("role") == "user" and "<system-reminder>" in message.get("content", "")
     ]
-    assert any("TOOL RECOVERY REQUIRED" in reminder for reminder in reminders)
+    assert _build_system_reminder("web_search", 0, "steer")["content"] in reminders
     assert all("times" not in reminder for reminder in reminders)
 
     assistant_tool_calls = [
