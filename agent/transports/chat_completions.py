@@ -700,6 +700,19 @@ class ChatCompletionsTransport(ProviderTransport):
                 if finish_reason in (None, "stop"):
                     finish_reason = "content_filter"
 
+        # Opt-in: providers configured with a text tool-call protocol emit
+        # tool calls as plain assistant text. Only a complete, well-formed
+        # payload is promoted; anything else stays as ordinary content.
+        text_protocol = kwargs.get("text_tool_call_protocol")
+        if text_protocol is not None and not tool_calls:
+            from agent.text_tool_call_parser import parse_text_tool_calls
+
+            parsed_calls = parse_text_tool_calls(content, text_protocol)
+            if parsed_calls:
+                tool_calls = parsed_calls
+                content = None
+                finish_reason = "tool_calls"
+
         return NormalizedResponse(
             content=content,
             tool_calls=tool_calls,
